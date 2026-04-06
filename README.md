@@ -2,19 +2,53 @@
 > Four.meme AI Sprint 2026 · Build Phase: April 8 – April 21
 
 **Team**
-| Name | Role |
-|---|---|
-| Joshua | Frontend & Blockchain Integration |
-| James | Backend Operations |
-| Ezekiel | AI/ML Integrations |
+| Name | Role | Stack |
+|---|---|---|
+| Joshua | Frontend & Blockchain Integration | Next.js, BSC RPC, Four.meme CLI |
+| James | Backend Operations | NestJS, PostgreSQL, WebSocket |
+| Ezekiel | AI/ML Integrations | Python, Gemini 2.5 Flash |
 
 ---
 
-## Overview
+## Tech Stack
 
-14 days. 4 phases. One demo-ready autonomous meme debate engine.
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js (App Router) |
+| Backend | NestJS |
+| AI/ML Service | Python (FastAPI microservice) |
+| AI Model | Gemini 2.5 Flash (`gemini-2.5-flash`) |
+| Database | PostgreSQL + Prisma |
+| Real-time | WebSocket (NestJS Gateway) |
+| Blockchain | BSC RPC + Four.meme CLI |
+| Deployment | Vercel (frontend) · Railway (backend + AI service) |
 
-The plan is structured so that by end of Day 7, the full pipeline runs end-to-end — even if rough. Days 8–14 are hardening, tuning, and demo prep. No feature should be introduced after Day 11.
+---
+
+## Architecture Overview
+
+```
+Next.js Dashboard (Joshua)
+        ↕ WebSocket + REST
+NestJS Backend (James)
+  — token intake queue
+  — filter logic
+  — debate orchestrator
+  — DB writes (PostgreSQL)
+        ↕ HTTP (internal API)
+Python AI Service (Ezekiel)
+  — Mini Classifier
+  — Optimist Agent
+  — Skeptic Agent
+  — Synthesizer
+  — all powered by Gemini 2.5 Flash
+        ↕
+Four.meme CLI + BSC RPC (Joshua)
+  — token feed
+  — on-chain signal snapshot
+```
+
+**Key principle:** NestJS is the brain — it orchestrates everything. The Python service is a pure AI microservice — it receives context, returns structured JSON, nothing else. Next.js only talks to NestJS.
 
 ---
 
@@ -22,8 +56,8 @@ The plan is structured so that by end of Day 7, the full pipeline runs end-to-en
 
 | Day | Milestone |
 |---|---|
-| Day 3 | All three devs can see real data locally — tokens ingested, signals returning, classifier printing output |
-| Day 7 | Full pipeline runs end-to-end — filter → debate → Meme Brief generated and logged |
+| Day 3 | All three devs can see real data locally — tokens ingested, signals returning, Gemini classifier returning JSON |
+| Day 7 | Full pipeline runs end-to-end — filter → debate → Meme Brief generated, logged, emitted via WebSocket |
 | Day 11 | Dashboard live, pipeline stable for 2+ hours, demo rehearsed once |
 | Day 14 | Repo clean, demo video recorded, submission ready |
 
@@ -32,49 +66,60 @@ The plan is structured so that by end of Day 7, the full pipeline runs end-to-en
 ## Phase 1 — Foundations (Days 1–3)
 
 ### Joshua — Frontend & Blockchain
+
 - [ ] Install and test the Four.meme CLI (`pnpm add -g @four-meme/four-meme-ai@latest`)
-- [ ] Confirm which CLI commands work without a private key (read-only: `token-rankings`, `token-info`, `token-list`)
-- [ ] Write a polling wrapper that calls `fourmeme token-rankings --filter newest` every 30s and dumps output to a local queue
+- [ ] Confirm which CLI commands work read-only without a private key (`token-rankings`, `token-info`, `token-list`)
+- [ ] Write a polling wrapper script that calls `fourmeme token-rankings --filter newest` every 30s and POSTs results to James's NestJS intake endpoint
 - [ ] Set up BSC RPC connection (public endpoint first, fallback second)
-- [ ] Implement `get_signal_snapshot(token_address)` returning:
-  ```python
+- [ ] Implement `getSignalSnapshot(tokenAddress)` returning:
+  ```typescript
   {
-    "top10_concentration": float,   # % held by top 10 wallets
-    "buy_pressure_ratio": float,    # unique buyers / sellers
-    "lp_depth_usd": float,          # pool liquidity in USD
-    "tx_velocity_delta": float,     # % change vs 1h rolling avg
-    "holder_growth_rate": int,      # new holders per hour
-    "token_age_hrs": float          # hours since first tx
+    top10Concentration: number,  // % held by top 10 wallets
+    buyPressureRatio: number,    // unique buyers / sellers
+    lpDepthUsd: number,          // pool liquidity in USD
+    txVelocityDelta: number,     // % change vs 1h rolling avg
+    holderGrowthRate: number,    // new holders per hour
+    tokenAgeHrs: number          // hours since first tx
   }
   ```
+- [ ] Scaffold Next.js project — App Router, Tailwind, three panel placeholder layout
 - [ ] Register EIP-8004 identity NFT for the Magen agent wallet
 
-**Deliverable:** `get_signal_snapshot()` returning real on-chain data for a live token. CLI polling printing newest tokens to console.
+**Deliverable:** `getSignalSnapshot()` returning real on-chain data for a live token. CLI polling POSTing to James's endpoint. Next.js running locally with placeholder panels.
 
 ---
 
 ### James — Backend Operations
-- [ ] Scaffold the project repo — folder structure, `.env.example`, shared constants
-- [ ] Set up async Python project (`asyncio` + `aiohttp`)
-- [ ] Build the token intake queue — receives tokens from Joshua's CLI poller
-- [ ] Implement the **rule-based filter** (no LLM, pure logic):
-  ```python
-  def passes_filter(token, signal):
-      return (
-          token["holder_count"] >= MIN_HOLDERS and
-          signal["tx_velocity_delta"] >= MIN_VELOCITY and
-          token["mention_count_1h"] >= MIN_MENTIONS
-      )
-  ```
-- [ ] Wire OpenAI SDK — confirm API key, test a basic `gpt-4o-mini` call
-- [ ] Set up SQLite schema: `tokens`, `classifier_outputs`, `debate_logs`, `meme_briefs`
 
-**Deliverable:** Filter running against real tokens from Joshua's poller. Filtered tokens printing to console. DB schema in place.
+- [ ] Scaffold NestJS project — modules: `tokens`, `filter`, `debate`, `briefs`, `gateway`
+- [ ] Set up PostgreSQL with Prisma — schema:
+  ```
+  Token, SignalSnapshot, ClassifierOutput, DebateLog, MemeBrief
+  ```
+- [ ] Build token intake endpoint — `POST /tokens/ingest` receives tokens from Joshua's poller, writes to DB
+- [ ] Implement the **rule-based filter service** (no AI, pure logic):
+  ```typescript
+  function passesFilter(token: Token, signal: SignalSnapshot): boolean {
+    return (
+      token.holderCount >= MIN_HOLDERS &&
+      signal.txVelocityDelta >= MIN_VELOCITY &&
+      token.mentionCount1h >= MIN_MENTIONS
+    )
+  }
+  ```
+- [ ] Set up NestJS WebSocket gateway — `BriefsGateway` emitting `brief:new` events
+- [ ] Write HTTP client service to call Ezekiel's Python microservice (`POST /classify`, `POST /debate`)
+- [ ] Confirm Prisma migrations running cleanly
+
+**Deliverable:** Token intake endpoint live. Filter running against real tokens. DB schema migrated. WebSocket gateway emitting test events.
 
 ---
 
 ### Ezekiel — AI/ML Integrations
-- [ ] Design the **Mini Classifier prompt** — takes a token + signal snapshot, returns:
+
+- [ ] Scaffold Python FastAPI microservice — two routes: `POST /classify` and `POST /debate`
+- [ ] Set up Google Gemini SDK (`google-generativeai`) — confirm API key, test a basic `gemini-2.5-flash` call
+- [ ] Design and test the **Mini Classifier prompt** — input: token metadata + signal snapshot, output:
   ```json
   {
     "worth_debating": true,
@@ -84,137 +129,156 @@ The plan is structured so that by end of Day 7, the full pipeline runs end-to-en
     "reasoning": "one sentence"
   }
   ```
-- [ ] Test prompt against 10 real Four.meme tokens manually — iterate until outputs are clean and consistent
-- [ ] Define the **Optimist Agent prompt** — argue why this token has genuine cultural legs
-- [ ] Define the **Skeptic Agent prompt** — argue why this looks derivative, manipulated, or bot-driven. Explicitly instruct to look for irony, coordinated posting, and unnatural velocity
-- [ ] Document agreed JSON schemas for all LLM outputs and share with James
+- [ ] Test classifier against 10 real Four.meme tokens manually — iterate until JSON output is clean and consistent
+- [ ] Design **Optimist Agent prompt** — argue why this token has genuine cultural legs
+- [ ] Design **Skeptic Agent prompt** — argue why this looks derivative, manipulated, or bot-driven. Explicitly instruct to look for irony, coordinated posting, unnatural velocity
+- [ ] Document and share agreed JSON schemas with James — nothing gets built on undefined interfaces
 
-**Deliverable:** All three prompts tested manually against real tokens. JSON schemas agreed and shared with team.
+**Deliverable:** FastAPI service running locally. Classifier returning clean JSON for real tokens. All prompt schemas agreed and shared with James.
 
 ---
 
 ## Phase 2 — Core Pipeline (Days 4–7)
 
 ### Joshua — Frontend & Blockchain
-- [ ] Build the **Telegram poster** — fires when a Meme Brief is ready, posts synthesis paragraph + archetype tag to target group via Four.meme Agent Skill or Bot API directly
-- [ ] Begin dashboard scaffold — React project, three-panel layout:
-  - Panel 1: Live token feed (tokens passing filter)
-  - Panel 2: Debate log (Optimist case / Skeptic case / Synthesis)
-  - Panel 3: On-chain strip (tx velocity, buy pressure, holder growth)
-- [ ] Connect dashboard to James's FastAPI via WebSocket (stub data is fine for now)
+
+- [ ] Build the **Telegram poster** — fires when NestJS emits `brief:new`, posts synthesis paragraph + archetype tag to target group
+- [ ] Connect Next.js dashboard to NestJS WebSocket — subscribe to `brief:new` events
+- [ ] Build the three dashboard panels with live data:
+  - **Panel 1 — Token Feed:** tokens passing the filter, rendering in real time
+  - **Panel 2 — Debate View:** Optimist case, Skeptic case, Synthesis paragraph, archetype tag, confidence signal
+  - **Panel 3 — On-chain Strip:** tx velocity, buy pressure, holder growth updating live
+- [ ] Pipe `getSignalSnapshot()` output to James's `POST /signals/ingest` endpoint every 30s for filtered tokens only
 - [ ] Test `fourmeme send` and Binance Square posting with the agent wallet
 
-**Deliverable:** Telegram posts firing when a brief is generated. Dashboard rendering with stub data.
+**Deliverable:** Dashboard rendering live data from WebSocket. Telegram firing on brief creation. On-chain signals flowing into NestJS.
 
 ---
 
 ### James — Backend Operations
-- [ ] Integrate `get_signal_snapshot()` from Joshua into the filter and classifier input
-- [ ] Wire Ezekiel's Mini Classifier — call `gpt-4o-mini` on every token that passes the rule-based filter
-- [ ] Build the **debate orchestrator**:
-  - Calls Optimist Agent (`gpt-4o-mini`) with token context
-  - Calls Skeptic Agent (`gpt-4o-mini`) with same context
-  - Passes both outputs to Synthesizer (`gpt-4o-mini`)
-  - Returns complete `MemeBrief` object
-- [ ] Log every brief to DB with timestamp, token address, all three LLM outputs
-- [ ] Expose `/api/briefs` REST endpoint and `/ws/live` WebSocket for dashboard
 
-**Deliverable:** Full pipeline runs end-to-end. Token enters filter → debate fires → Meme Brief logged to DB and emitted via WebSocket.
+- [ ] Integrate signal snapshot from Joshua into the filter and classifier request payload
+- [ ] Wire the classifier call — filtered tokens trigger `POST /classify` to Python service, result stored in DB
+- [ ] Build the **debate orchestrator service**:
+  - If `worth_debating: true` → call `POST /debate` with full token context
+  - Receives `optimist`, `skeptic`, `synthesis` from Python service
+  - Constructs and saves `MemeBrief` to DB
+  - Emits `brief:new` via WebSocket gateway
+- [ ] Expose `GET /briefs` paginated REST endpoint for brief history
+- [ ] Add basic request logging — every AI call logged with latency and token address
+
+**Deliverable:** Full pipeline running end-to-end. Token ingested → filtered → classified → debated → brief saved → emitted via WebSocket → appears on dashboard.
 
 ---
 
 ### Ezekiel — AI/ML Integrations
-- [ ] Build the **Synthesizer prompt** — takes Optimist output + Skeptic output, returns:
+
+- [ ] Build the `/debate` route — calls Optimist and Skeptic agents in parallel (`asyncio.gather`), then passes both outputs to Synthesizer, returning:
   ```json
   {
-    "synthesis": "one paragraph plain English",
+    "optimist": "paragraph arguing cultural legs",
+    "skeptic": "paragraph arguing manipulation or derivativeness",
+    "synthesis": "one paragraph plain English verdict",
     "verdict_tag": "culturally interesting, socially suspicious",
     "confidence_signal": "strongly contested",
     "cultural_archetype": "absurdist animal"
   }
   ```
-- [ ] Implement **X mention ingestion** — filtered stream or search API, cashtag-based, feeding mention_count and account_age_distribution into the classifier input
-- [ ] Build rolling window tracker — tracks per-token: mention velocity, bot suspicion score history, irony signal history over last 5 classifier calls
-- [ ] Tune bot_suspicion_score thresholds against real data — what score actually correlates with suspicious posting patterns?
+- [ ] Set Gemini generation config:
+  - Classifier: `temperature: 0.2` (consistent, comparable outputs)
+  - Optimist / Skeptic: `temperature: 0.7` (allow personality and voice)
+  - Synthesizer: `temperature: 0.3` (balanced, readable)
+- [ ] Implement **X mention ingestion** — filtered stream or search API, cashtag-based, feeding `mention_count` and `account_age_distribution` into classifier payload
+- [ ] Build rolling window tracker — per-token: mention velocity, bot suspicion score history, irony signal history over last 5 classifier calls (in-memory dict, Redis optional)
 
-**Deliverable:** X data feeding into classifier. Synthesizer producing clean one-paragraph briefs. Rolling window returning stable metrics.
+**Deliverable:** `/debate` returning complete structured JSON. Parallel Gemini calls working. X data feeding into classifier payload.
 
 ---
 
 ## Phase 3 — Hardening & Dashboard (Days 8–11)
 
 ### Joshua — Frontend & Blockchain
-- [ ] Polish the live dashboard — this is what judges see, make it clean:
-  - Meme Brief card: Optimist case, Skeptic case, Synthesis, archetype tag, confidence signal all visible
-  - On-chain strip updating live via WebSocket
-  - Brief history scrollable feed
-- [ ] Add **8004 reputation tracker** to dashboard — shows Magen's agent wallet address, briefs published count, and a running log tied to the on-chain identity
-- [ ] Implement fallback replay mode — pre-cache 2h of real token + brief data so demo can run without live API dependency
-- [ ] Test full demo flow end-to-end — open browser, show live brief generating, Telegram post firing
 
-**Deliverable:** Dashboard demo-ready. Replay mode working. Full flow tested once.
+- [ ] Polish the dashboard — this is what judges see:
+  - Meme Brief card: all fields visible and well-typeset
+  - Confidence signal visually distinct — "strongly contested" vs "both agents agreed" should look different at a glance
+  - Brief history: scrollable feed of past briefs, filterable by archetype tag
+  - Mobile-responsive — judges may view on phone
+- [ ] Add **8004 Reputation Tracker** panel — Magen's agent wallet address, total briefs published, running log tied to on-chain identity
+- [ ] Implement **replay mode** — loads pre-cached 2h of real brief data from `GET /briefs`, plays back through the WebSocket UI as if live. This is your demo safety net — build it seriously
+- [ ] Deploy to Vercel — confirm live URL works from a fresh browser, environment variables set
+
+**Deliverable:** Dashboard polished and deployed. Replay mode working. Live URL stable.
 
 ---
 
 ### James — Backend Operations
-- [ ] Add **cooldown logic** — no debate fires for the same token within 15 minutes of last brief
-- [ ] Add **suppression memory** — if Skeptic flags bot suspicion > 0.8 three times on same token, lower its filter priority weight
-- [ ] Run pipeline continuously for 4+ hours — fix any async errors, memory leaks, or rate limit hits
-- [ ] Add retry logic for OpenAI API calls and BSC RPC timeouts
-- [ ] Write `.env.example` and local setup instructions so any teammate can run the project in under 10 minutes
 
-**Deliverable:** Pipeline stable for 4+ hours. Setup docs done.
+- [ ] Add **cooldown logic** — no debate fires for the same token within 15 minutes of last brief
+- [ ] Add **suppression memory** — if `bot_suspicion_score > 0.8` on three consecutive classifier calls for a token, lower its filter priority weight
+- [ ] Add retry logic for Python service calls and BSC RPC timeouts — exponential backoff, max 3 retries
+- [ ] Run pipeline continuously for 4+ hours — fix any memory leaks, unhandled exceptions, or DB connection issues
+- [ ] Write `.env.example` with all required keys documented
+- [ ] Deploy NestJS to Railway — confirm production DB connection and Python service communication
+
+**Deliverable:** Pipeline stable for 4+ hours. Cooldown and suppression working. Railway deployment live.
 
 ---
 
 ### Ezekiel — AI/ML Integrations
-- [ ] Run **decision replay eval** on 24h of logs:
-  - Did tokens with high bot_suspicion_score actually underperform?
-  - Did "strongly contested" briefs correlate with higher volatility?
-  - Were irony_signal tokens correctly skepticised?
-- [ ] Tune prompts based on replay results — if Skeptic is too aggressive or Optimist is too credulous, adjust
-- [ ] Improve Synthesizer output quality — synthesis paragraph should read naturally, not like a summary. Test with 20 real briefs
-- [ ] Prepare **2-slide technical explainer**: (1) why multi-agent debate beats single LLM scoring, (2) how the cost discipline works (filter → classifier → debate only on flag)
 
-**Deliverable:** Prompts tuned against real data. Technical explainer slides ready. Replay eval results documented.
+- [ ] Run **decision replay eval** on 24h of logs:
+  - Did tokens with high `bot_suspicion_score` actually underperform?
+  - Did "strongly contested" briefs correlate with more volatile tokens?
+  - Were `irony_signal: true` tokens correctly skepticised?
+- [ ] Tune prompts based on replay results — if Skeptic is too aggressive or Optimist too credulous, adjust system prompts accordingly
+- [ ] Improve Synthesizer output — synthesis paragraph must read like a sharp analyst, not an AI summary. Test with 20 real briefs, iterate until it sounds human
+- [ ] Deploy Python FastAPI service to Railway — confirm it receives requests from NestJS in production
+- [ ] Prepare **2-slide technical explainer**: (1) why multi-agent debate beats single-score sentiment, (2) how Gemini 2.5 Flash's cost profile makes the architecture viable
+
+**Deliverable:** Prompts tuned. Python service deployed on Railway. Technical explainer slides ready.
 
 ---
 
 ## Phase 4 — Demo Prep (Days 12–14)
 
 ### Joshua — Frontend & Blockchain
-- [ ] Record the **demo video** (3 minutes max):
-  - Open with dashboard live — a token just passed the filter
-  - Show the debate firing in real time — Optimist and Skeptic cases appearing
-  - Highlight the Synthesis paragraph — read it aloud
-  - Show the Telegram post that fired automatically
-  - Close on the 8004 reputation tracker — "this agent has a verifiable on-chain identity"
-- [ ] Clean up the UI — remove any console logs, loading states, or rough edges visible in demo
-- [ ] Deploy dashboard to Vercel, ensure live demo URL works reliably
 
-**Deliverable:** Demo video recorded. Live URL stable.
+- [ ] Record the **demo video** (3 minutes max):
+  1. Open on live dashboard — a token just passed the filter
+  2. Show the debate firing — Optimist and Skeptic cases appearing in real time
+  3. Highlight the Synthesis paragraph — read it aloud, let it land
+  4. Show the Telegram post that fired automatically
+  5. Close on the 8004 Reputation Tracker — *"this agent has a verifiable on-chain identity"*
+- [ ] Final UI pass — no console errors, no stuck loading states, no rough edges visible during demo
+- [ ] Confirm Vercel deployment stable — test live URL from fresh browser, incognito
+
+**Deliverable:** Demo video recorded and reviewed by team. Live URL confirmed stable.
 
 ---
 
 ### James — Backend Operations
-- [ ] Run the full loop against a live token for 48h — log everything
-- [ ] Clean the repo: remove debug prints, add docstrings to key functions, ensure `.env.example` is complete
-- [ ] Write the submission README — project description, setup steps, architecture diagram, team
-- [ ] Prepare for the judge question: *"How much does this cost to run per hour?"* — have a real number ready
 
-**Deliverable:** Clean repo. Submission README done. Cost figure calculated.
+- [ ] Run the full loop against a live token for 48h — log everything, fix anything that breaks
+- [ ] Clean the repo — remove debug logs, add JSDoc to key NestJS services, ensure `.env.example` is complete
+- [ ] Write the **submission README** — project description, architecture diagram, setup steps, team
+- [ ] Calculate and document real cost-per-hour to run Magen — judges will ask, have a real number ready
+
+**Deliverable:** Clean repo. Submission README done. Cost figure calculated and ready to cite.
 
 ---
 
 ### Ezekiel — AI/ML Integrations
-- [ ] Identify the **best brief in the logs** for the demo — ideally one where Optimist and Skeptic strongly disagree and the synthesis reads compellingly
+
+- [ ] Identify the **best brief in the logs** for demo — ideally one where Optimist and Skeptic strongly disagree and the synthesis reads compellingly
+- [ ] Final prompt review — read every prompt cold as if for the first time. Flag anything robotic, generic, or unconvincing
 - [ ] Prepare the **pitch narrative** around the innovation claim:
   - Why multi-agent debate is architecturally superior to single-score sentiment
-  - Why the Skeptic agent's irony detection is novel
-  - Why no single score means Goodhart's Law cannot apply
-- [ ] Final prompt review — read every prompt cold, check for anything that sounds robotic or generic in the output
+  - Why the Skeptic agent's irony detection is novel on BNB Chain
+  - Why no single score means Goodhart's Law cannot apply to Magen
+- [ ] Clean the Python service — type hints, docstrings on all routes, `requirements.txt` pinned
 
-**Deliverable:** Best brief identified for demo. Pitch narrative written and shared with team.
+**Deliverable:** Best brief selected. Pitch narrative written and shared with team. Python service clean.
 
 ---
 
@@ -222,26 +286,27 @@ The plan is structured so that by end of Day 7, the full pipeline runs end-to-en
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| X API rate limits hit during demo | Medium | Build replay mode in Phase 3 — treat it as a first-class feature |
-| OpenAI API costs spike unexpectedly | Medium | Set hard daily spend limit on OpenAI account from Day 1 |
-| Pipeline unstable during live demo | Medium | Always demo from replay mode — live mode is a bonus |
-| Debate outputs are vague or generic | Medium | Ezekiel tunes prompts in Phase 3 eval — don't skip this step |
-| BSC RPC latency spikes | Low | Retry logic + secondary RPC endpoint in Phase 3 |
-| Team misaligned on JSON schemas | Low | Agree schemas end of Phase 1 — nothing gets built on undefined interfaces |
+| X API rate limits hit during demo | Medium | Replay mode in Phase 3 — treat as first-class feature, not backup |
+| Gemini API quota exceeded unexpectedly | Medium | Set daily spend alert in GCP console from Day 1. Gemini 2.5 Flash is cost-efficient — monitor early |
+| NestJS ↔ Python service latency too high | Low–Medium | Keep both on same Railway region. Parallel agent calls (`asyncio.gather`) reduce total latency |
+| Pipeline unstable during live demo | Medium | Always demo from replay mode — live mode is a bonus, not the plan |
+| Debate outputs vague or generic | Medium | Ezekiel tunes prompts in Phase 3 eval — this step is non-negotiable |
+| BSC RPC latency spikes | Low | Retry logic + secondary RPC endpoint added in Phase 3 |
+| Team misaligned on JSON schemas | Low | Schemas agreed end of Phase 1 — nothing downstream gets built on undefined interfaces |
 
 ---
 
 ## The One Thing
 
-The **Synthesis paragraph** is your most valuable asset. Every hour of Phase 3 tuning should serve one goal: making that paragraph read like something a sharp, opinionated analyst wrote — not like an AI summary.
+The **Synthesis paragraph** is Magen's most valuable asset. Every hour of Phase 3 tuning serves one goal: making that paragraph read like something a sharp, opinionated analyst wrote — not an AI summary.
 
 The demo moment that wins:
 
 > *"Optimist sees a rising absurdist animal archetype with organic X traction. Skeptic flags that 80% of mentions came from 3 accounts in 4 minutes. Verdict: culturally interesting, socially suspicious — proceed with caution."*
 
-That line, generated autonomously, live on screen — that's Magen.
+That line, generated autonomously by Gemini 2.5 Flash, live on screen — that's Magen.
 
 ---
 
 *Four.meme AI Sprint 2026 · Build Phase April 8–21 · Submission April 22*
-*Team: Joshua (Frontend/Blockchain) · James (Backend) · Ezekiel (AI/ML)*
+*Joshua (Next.js / Blockchain) · James (NestJS / Backend) · Ezekiel (Python / Gemini 2.5 Flash)*
