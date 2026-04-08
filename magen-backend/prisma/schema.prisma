@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Token {
+  id              String   @id @default(cuid())
+  address         String   @unique
+  name            String
+  symbol          String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  holderCount     Int      @default(0)
+  mentionCount1h  Int      @default(0)
+
+  // Relations
+  signalSnapshots   SignalSnapshot[]
+  classifierOutputs ClassifierOutput[]
+  debateLogs        DebateLog[]
+  memeBriefs        MemeBrief[]
+
+  @@map("tokens")
+}
+
+model SignalSnapshot {
+  id              String   @id @default(cuid())
+  tokenAddress    String
+  token           Token    @relation(fields: [tokenAddress], references: [address], onDelete: Cascade)
+
+  timestamp       DateTime @default(now())
+
+  txVelocityDelta    Float  // % change vs 1h avg
+  buyPressureRatio   Float  // buyers / sellers
+  top10Concentration Float  // % held by top 10 wallets
+  holderGrowthRate   Int    // new holders per hour
+  lpDepthUsd         Float
+  tokenAgeHrs        Float
+
+  @@index([tokenAddress, timestamp])
+  @@map("signal_snapshots")
+}
+
+model ClassifierOutput {
+  id                 String   @id @default(cuid())
+  tokenAddress       String
+  token              Token    @relation(fields: [tokenAddress], references: [address], onDelete: Cascade)
+
+  timestamp          DateTime @default(now())
+
+  worthDebatING      Boolean
+  culturalArchetype  String
+  botSuspicionScore  Float
+  ironySignal        Boolean
+  reasoning          String
+
+  @@index([tokenAddress, timestamp])
+  @@map("classifier_outputs")
+}
+
+model DebateLog {
+  id          String   @id @default(cuid())
+  tokenAddress String
+  token       Token    @relation(fields: [tokenAddress], references: [address], onDelete: Cascade)
+
+  timestamp   DateTime @default(now())
+
+  optimist    String
+  skeptic     String
+  synthesis   String
+  verdictTag  String
+  confidenceSignal String
+
+  @@index([tokenAddress])
+  @@map("debate_logs")
+}
+
+model MemeBrief {
+  id                String   @id @default(cuid())
+  tokenAddress      String   @unique
+  token             Token    @relation(fields: [tokenAddress], references: [address], onDelete: Cascade)
+
+  createdAt         DateTime @default(now())
+
+  culturalArchetype String
+  verdictTag        String
+  confidenceSignal  String
+  synthesis         String   // The hero output
+
+  optimist          String
+  skeptic           String
+
+  postedToTelegram  Boolean  @default(false)
+  telegramMessageId String? 
+
+  @@index([createdAt])
+  @@index([culturalArchetype])
+  @@map("meme_briefs")
+}
+
+model PipelineLog {
+  id          String   @id @default(cuid())
+  tokenAddress String?
+  eventType   String   // "ingest", "filter_pass", "filter_fail", "classify", "debate", "error"
+  message     String
+  metadata    Json?
+  timestamp   DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([eventType])
+  @@map("pipeline_logs")
+}
