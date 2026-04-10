@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.classify import router as classify_router
+from routes.debate import router as debate_router
 import os
 from dotenv import load_dotenv
 
@@ -25,6 +26,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(classify_router, tags=["classification"])
+app.include_router(debate_router, tags=["debate"])
 
 
 @app.get("/health")
@@ -45,7 +47,7 @@ async def root():
         "endpoints": {
             "health": "/health",
             "classify": "POST /classify",
-            "debate": "POST /debate (coming soon)",
+            "debate": "POST /debate",
         },
     }
 
