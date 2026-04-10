@@ -1,6 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import type { Token, SignalSnapshot } from '@prisma/client';
+
+type FilterToken = {
+  address: string;
+  symbol: string;
+  holderCount: number;
+  mentionCount1h: number;
+};
+
+type FilterSignalSnapshot = {
+  txVelocityDelta: number;
+  lpDepthUsd: number;
+  tokenAgeHrs: number;
+};
 
 @Injectable()
 export class FilterService {
@@ -16,7 +28,7 @@ export class FilterService {
   private readonly MIN_LP_DEPTH_USD = 4500;
   private readonly MAX_TOKEN_AGE_HOURS = 8; // Only consider very new tokens
 
-  passesFilter(token: Token, signal: SignalSnapshot): boolean {
+  passesFilter(token: FilterToken, signal: FilterSignalSnapshot): boolean {
     const reasons: string[] = [];
 
     if (token.holderCount < this.MIN_HOLDERS) {
