@@ -3,7 +3,6 @@
 > Multi-agent AI debate system for meme token cultural analysis on BNB Chain.  
 > Built for the Four.meme AI Sprint — April 2026.
 
----
 
 ## Overview
 
