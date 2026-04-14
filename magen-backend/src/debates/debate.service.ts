@@ -9,13 +9,13 @@ export class DebateService {
   private readonly logger = new Logger(DebateService.name)
 
   // Cooldown tracking — tokenAddress → last brief timestamp
-  private readonly cooldowns = new Map<string, number>()
-  private readonly COOLDOWN_MS = 15 * 60 * 1000 // 15 minutes
+  private readonly cooldowns = new Map<string, number>();
+  private readonly COOLDOWN_MS = 15 * 60 * 1000 ;// 15 minutes
 
   // Suppression memory — tokenAddress → consecutive high bot_suspicion count
-  private readonly botSuspicionCounts = new Map<string, number>()
-  private readonly BOT_SUSPICION_THRESHOLD = 0.8
-  private readonly SUPPRESSION_COUNT = 3
+  private readonly botSuspicionCounts = new Map<string, number>();
+  private readonly BOT_SUSPICION_THRESHOLD = 0.8;
+  private readonly SUPPRESSION_COUNT = 3;
 
   constructor(
     private readonly prisma: PrismaService,
