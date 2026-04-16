@@ -52,7 +52,7 @@ model ClassifierOutput {
 
   timestamp          DateTime @default(now())
 
-  worthDebatING      Boolean
+  worthDebating      Boolean  @map("worthDebatING")
   culturalArchetype  String
   botSuspicionScore  Float
   ironySignal        Boolean

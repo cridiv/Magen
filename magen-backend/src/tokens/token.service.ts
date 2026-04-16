@@ -2,20 +2,25 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { IngestBatchDto, IngestTokenItemDto } from './dto/ingest.dto';
 import { FilterService } from '../filters/filter.service';
+import { DebateService, ProcessTokenResult } from '../debates/debate.service';
 
 type IngestResult = {
   tokenAddress: string;
   symbol: string;
   passesFilter: boolean;
+  filterReasons?: string[];
+  aiResult?: ProcessTokenResult | null;
 };
 
 @Injectable()
 export class TokenService {
   private readonly logger = new Logger(TokenService.name);
+  private readonly forceAiPipeline = process.env.FORCE_AI_PIPELINE === 'true';
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly filterService: FilterService,
+    private readonly debateService: DebateService,
   ) {}
 
   async ingestTokens(dto: IngestBatchDto) {
@@ -73,14 +78,25 @@ export class TokenService {
         });
 
         // Automatically run filter
-        const passesFilter = this.filterService.passesFilter(token, signal);
+        const filter = this.filterService.evaluateFilter(token, signal);
+        const passesFilter = filter.passes;
+        let aiResult: ProcessTokenResult | null = null;
+
+        if (passesFilter || this.forceAiPipeline) {
+          if (!passesFilter && this.forceAiPipeline) {
+            this.logger.warn(
+              `FORCE_AI_PIPELINE=true -> bypassing filter for ${item.symbol} (${item.address})`,
+            );
+          }
+          aiResult = await this.debateService.processToken(token, signal);
+        }
 
         await this.prisma.pipelineLog.create({
           data: {
             tokenAddress: item.address,
             eventType: passesFilter ? 'filter_pass' : 'filter_fail',
             message: `Filter ${passesFilter ? 'passed' : 'failed'}`,
-            metadata: { passesFilter, holderCount: token.holderCount },
+            metadata: { passesFilter, reasons: filter.reasons, holderCount: token.holderCount },
           },
         });
 
@@ -88,9 +104,17 @@ export class TokenService {
           tokenAddress: item.address,
           symbol: item.symbol,
           passesFilter,
+          filterReasons: filter.reasons,
+          aiResult,
         });
 
-        this.logger.log(`Ingested token ${item.symbol} (${item.address}) | Filter: ${passesFilter}`);
+        this.logger.log(
+          `Ingested token ${item.symbol} (${item.address}) | Filter: ${passesFilter}` +
+            (this.forceAiPipeline && !passesFilter ? ' | AI: forced' : '') +
+            (aiResult
+              ? ` | AI: ${aiResult.briefCreated ? 'brief_created' : aiResult.worthDebating ? 'debated' : 'classified_only'}`
+              : ''),
+        );
       } catch (error) {
         this.logger.error(`Failed to ingest token ${item.address}`, error);
       }

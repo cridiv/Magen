@@ -22,13 +22,13 @@ export class FilterService {
   ) {}
 
 
-  private readonly MIN_HOLDERS = 120;
-  private readonly MIN_VELOCITY_DELTA = 1.5;
-  private readonly MIN_MENTIONS_1H = 25;
-  private readonly MIN_LP_DEPTH_USD = 4500;
+  private readonly MIN_HOLDERS = 50;
+  private readonly MIN_VELOCITY_DELTA = 0.8;
+  private readonly MIN_MENTIONS_1H = 0;
+  private readonly MIN_LP_DEPTH_USD = 2000;
   private readonly MAX_TOKEN_AGE_HOURS = 8; // Only consider very new tokens
 
-  passesFilter(token: FilterToken, signal: FilterSignalSnapshot): boolean {
+  evaluateFilter(token: FilterToken, signal: FilterSignalSnapshot): { passes: boolean; reasons: string[] } {
     const reasons: string[] = [];
 
     if (token.holderCount < this.MIN_HOLDERS) {
@@ -50,11 +50,15 @@ export class FilterService {
     const passes = reasons.length === 0;
 
     if (!passes) {
-      this.logger.debug(`Filter failed for ${token.symbol || token.address}: ${reasons.join(', ')}`);
+      this.logger.warn(`Filter failed for ${token.symbol || token.address}: ${reasons.join(', ')}`);
     } else {
       this.logger.log(`✅ Filter PASSED for ${token.symbol || token.address}`);
     }
 
-    return passes;
+    return { passes, reasons };
+  }
+
+  passesFilter(token: FilterToken, signal: FilterSignalSnapshot): boolean {
+    return this.evaluateFilter(token, signal).passes;
   }
 }

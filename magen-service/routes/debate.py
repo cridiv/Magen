@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import asyncio
 import os
-import google.generativeai as genai
 
 from agents.optimist import OptimistAgent
 from agents.skeptic import SkepticAgent
@@ -197,7 +196,7 @@ async def debate(request: DebateRequest) -> DebateResponse | DebateError:
             retryable=True,
             retry_after_ms=5000,
         )
-    except genai.APIError as e:
+    except Exception as e:
         error_str = str(e).lower()
         if "429" in error_str or "rate" in error_str:
             return DebateError(

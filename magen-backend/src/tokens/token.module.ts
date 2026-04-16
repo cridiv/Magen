@@ -3,9 +3,10 @@ import { TokenController } from './token.controller';
 import { TokenService } from './token.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FilterModule } from '../filters/filter.module';
+import { DebateModule } from '../debates/debate.module';
 
 @Module({
-  imports: [PrismaModule, FilterModule],
+  imports: [PrismaModule, FilterModule, DebateModule],
   controllers: [TokenController],
   providers: [TokenService],
   exports: [TokenService],

@@ -1,6 +1,6 @@
 import json
-import google.generativeai as genai
-from typing import Optional
+from google import genai
+from google.genai import types
 from pydantic import BaseModel
 
 
@@ -43,11 +43,8 @@ class ClassifierError(BaseModel):
 class Classifier:
     def __init__(self, api_key: str):
         """Initialize the classifier with Gemini API key"""
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            generation_config=genai.types.GenerationConfig(temperature=0.2),
-        )
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = "gemini-2.5-flash"
         # Load the system prompt
         with open("prompts/classifier.txt", "r") as f:
             self.system_prompt = f.read()
@@ -87,18 +84,14 @@ Respond with ONLY a JSON object, no other text.
 """
 
             # Call Gemini
-            response = self.model.generate_content(
-                f"{self.system_prompt}\n\n{user_message}",
-                safety_settings=[
-                    {
-                        "category": genai.types.HarmCategory.HARM_CATEGORY_UNSPECIFIED,
-                        "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE,
-                    }
-                ],
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=f"{self.system_prompt}\n\n{user_message}",
+                config=types.GenerateContentConfig(temperature=0.2),
             )
 
             # Parse the response
-            response_text = response.text.strip()
+            response_text = (response.text or "").strip()
 
             # Remove markdown code blocks if present
             if response_text.startswith("```"):
@@ -127,7 +120,7 @@ Respond with ONLY a JSON object, no other text.
                 message=f"Gemini response was not valid JSON: {str(e)}",
                 retryable=True,
             )
-        except genai.APIError as e:
+        except Exception as e:
             # Check if it's a rate limit or service error
             error_str = str(e).lower()
             if "429" in error_str or "rate" in error_str:
