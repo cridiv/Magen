@@ -2,7 +2,23 @@ import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { AiClientService, ClassifyRequest } from '../ai-client/ai-client.service'
 import { BriefsGateway } from '../briefs/briefs.gateway'
-import { Token, SignalSnapshot } from '@prisma/client'
+
+export type DebateTokenInput = {
+  address: string
+  name?: string
+  symbol: string
+  holderCount: number
+  mentionCount1h: number
+}
+
+export type DebateSignalInput = {
+  txVelocityDelta: number
+  buyPressureRatio?: number
+  top10Concentration?: number
+  holderGrowthRate?: number
+  lpDepthUsd: number
+  tokenAgeHrs: number
+}
 
 export interface ProcessTokenResult {
   classified: boolean
@@ -48,7 +64,7 @@ export class DebateService {
 
   // ─── Entry point — called by FilterService after a token passes ───────────
 
-  async processToken(token: Token, signal: SignalSnapshot): Promise<ProcessTokenResult> {
+  async processToken(token: DebateTokenInput, signal: DebateSignalInput): Promise<ProcessTokenResult> {
     const address = token.address
 
     // Check cooldown
@@ -67,7 +83,7 @@ export class DebateService {
     const classifyPayload: ClassifyRequest = {
       token: {
         address: token.address,
-        name: token.name,
+        name: token.name ?? token.symbol,
         symbol: token.symbol,
         holderCount: token.holderCount,
         mentionCount1h: token.mentionCount1h,
@@ -79,9 +95,9 @@ export class DebateService {
       },
       signal: {
         txVelocityDelta: signal.txVelocityDelta,
-        buyPressureRatio: signal.buyPressureRatio,
-        top10Concentration: signal.top10Concentration,
-        holderGrowthRate: signal.holderGrowthRate,
+        buyPressureRatio: signal.buyPressureRatio ?? 0,
+        top10Concentration: signal.top10Concentration ?? 0,
+        holderGrowthRate: signal.holderGrowthRate ?? 0,
         lpDepthUsd: signal.lpDepthUsd,
         tokenAgeHrs: signal.tokenAgeHrs,
       },

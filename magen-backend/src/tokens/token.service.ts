@@ -45,40 +45,25 @@ export class TokenService {
     }
 
     const results: IngestResult[] = [];
+    this.logger.debug(`Raw payload sample: ${JSON.stringify(dto.tokens?.[0]?.signal)}`);
 
     for (const item of items) {
       try {
-        const token = await this.prisma.token.upsert({
-          where: { address: item.address },
-          update: {
-            name: item.name,
-            symbol: item.symbol,
-            holderCount: item.holderCount,
-            mentionCount1h: item.mentionCount1h,
-          },
-          create: {
-            address: item.address,
-            name: item.name,
-            symbol: item.symbol,
-            holderCount: item.holderCount,
-            mentionCount1h: item.mentionCount1h,
-          },
-        });
+        const filterInput = {
+  address: item.address,
+  symbol: item.symbol,
+  holderCount: item.holderCount,
+  mentionCount1h: item.mentionCount1h,
+};
 
-        const signal = await this.prisma.signalSnapshot.create({
-          data: {
-            tokenAddress: item.address,
-            txVelocityDelta: item.signal.txVelocityDelta,
-            buyPressureRatio: item.signal.buyPressureRatio,
-            top10Concentration: item.signal.top10Concentration,
-            holderGrowthRate: item.signal.holderGrowthRate,
-            lpDepthUsd: item.signal.lpDepthUsd,
-            tokenAgeHrs: item.signal.tokenAgeHrs,
-          },
-        });
+        const signalInput = {
+  txVelocityDelta: item.signal.txVelocityDelta,
+  lpDepthUsd: item.signal.lpDepthUsd,
+  tokenAgeHrs: item.signal.tokenAgeHrs,
+};
 
         // Automatically run filter
-        const filter = this.filterService.evaluateFilter(token, signal);
+        const filter = this.filterService.evaluateFilter(filterInput, signalInput);
         const passesFilter = filter.passes;
         let aiResult: ProcessTokenResult | null = null;
 
@@ -88,7 +73,7 @@ export class TokenService {
               `FORCE_AI_PIPELINE=true -> bypassing filter for ${item.symbol} (${item.address})`,
             );
           }
-          aiResult = await this.debateService.processToken(token, signal);
+          aiResult = await this.debateService.processToken(filterInput, signalInput);
         }
 
         await this.prisma.pipelineLog.create({
@@ -96,7 +81,7 @@ export class TokenService {
             tokenAddress: item.address,
             eventType: passesFilter ? 'filter_pass' : 'filter_fail',
             message: `Filter ${passesFilter ? 'passed' : 'failed'}`,
-            metadata: { passesFilter, reasons: filter.reasons, holderCount: token.holderCount },
+            metadata: { passesFilter, reasons: filter.reasons, holderCount: filterInput.holderCount },
           },
         });
 

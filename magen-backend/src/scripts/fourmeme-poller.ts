@@ -26,6 +26,9 @@ type FourmemeResponse =
 type DexscreenerPair = {
   chainId?: string;
   liquidity?: { usd?: number | string };
+  marketCap?: number | string;
+  fdv?: number | string;
+  volume?: { h24?: number | string };
 };
 
 type IngestSignal = {
@@ -52,7 +55,8 @@ type IngestResponse = {
   results?: unknown[];
 };
 
-const NESTJS_INGEST_URL = process.env.NESTJS_INGEST_URL ?? 'http://localhost:5000/tokens/ingest';
+const NESTJS_INGEST_URL =
+  process.env.NESTJS_INGEST_URL ?? 'http://localhost:5000/tokens/ingest';
 const BATCH_SIZE = 6;
 let pollInFlight = false;
 
@@ -67,7 +71,25 @@ function normalizeTokens(parsed: FourmemeResponse): FourmemeToken[] {
 function toNumber(value: unknown, fallback = 0): number {
   const numeric = typeof value === 'string' ? Number(value) : value;
 
-  return typeof numeric === 'number' && Number.isFinite(numeric) ? numeric : fallback;
+  return typeof numeric === 'number' && Number.isFinite(numeric)
+    ? numeric
+    : fallback;
+}
+
+function resolveDepth(pair: DexscreenerPair | undefined): number {
+  if (!pair) return 0;
+
+  const liquidityUsd = toNumber(pair.liquidity?.usd, 0);
+  if (liquidityUsd > 0) return liquidityUsd;
+
+  const marketCap = toNumber(pair.marketCap, 0);
+  if (marketCap > 0) return marketCap;
+
+  const fdv = toNumber(pair.fdv, 0);
+  if (fdv > 0) return fdv;
+
+  const volume24h = toNumber(pair.volume?.h24, 0);
+  return volume24h > 0 ? volume24h * 2 : 0;
 }
 
 function extractText(value: unknown): string {
@@ -112,7 +134,9 @@ async function fetchFourmemeOutput(): Promise<string | null> {
         combined.includes('gateway') ||
         combined.includes('504')
       ) {
-        console.warn(`⚠️ Four.meme fetch failed (attempt ${attempt}/${maxAttempts})`);
+        console.warn(
+          `⚠️ Four.meme fetch failed (attempt ${attempt}/${maxAttempts})`,
+        );
 
         if (attempt < maxAttempts) {
           await delay(1500 * attempt);
@@ -153,7 +177,8 @@ async function pollAndIngest(): Promise<void> {
     const lightBatch: IngestTokenItem[] = [];
 
     for (const token of rawTokens) {
-      const address = token.address ?? token.contractAddress ?? token.tokenAddress;
+      const address =
+        token.address ?? token.contractAddress ?? token.tokenAddress;
 
       if (typeof address !== 'string' || !address.startsWith('0x')) {
         continue;
@@ -167,8 +192,20 @@ async function pollAndIngest(): Promise<void> {
           { timeout: 6000 },
         );
 
-        const pair = response.data.pairs?.find((candidate) => candidate.chainId === 'bsc');
-        lpDepthUsd = toNumber(pair?.liquidity?.usd, 0);
+        const bscPairs = (response.data.pairs ?? []).filter(
+          (candidate) => candidate.chainId === 'bsc',
+        );
+        const bestPair = bscPairs.reduce<DexscreenerPair | undefined>(
+          (best, candidate) => {
+            if (!best) return candidate;
+            return resolveDepth(candidate) > resolveDepth(best)
+              ? candidate
+              : best;
+          },
+          undefined,
+        );
+
+        lpDepthUsd = Math.round(resolveDepth(bestPair));
       } catch {
         lpDepthUsd = 0;
       }
@@ -217,7 +254,10 @@ async function pollAndIngest(): Promise<void> {
         console.log(`   Processed: ${response.data.processed ?? batch.length}`);
       } catch (error: unknown) {
         if (axios.isAxiosError(error)) {
-          console.error('❌ Light batch failed:', error.response?.data ?? error.message);
+          console.error(
+            '❌ Light batch failed:',
+            error.response?.data ?? error.message,
+          );
         } else if (error instanceof Error) {
           console.error('❌ Light batch failed:', error.message);
         } else {
