@@ -1,15 +1,12 @@
-import google.generativeai as genai
-from typing import Optional
+from google import genai
+from google.genai import types
 
 
 class SkepticAgent:
     def __init__(self, api_key: str):
         """Initialize the Skeptic agent with Gemini API key"""
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            generation_config=genai.types.GenerationConfig(temperature=0.7),
-        )
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = "gemini-2.5-flash"
         # Load the system prompt
         with open("prompts/skeptic.txt", "r") as f:
             self.system_prompt = f.read()
@@ -61,18 +58,14 @@ Hunt for mechanical red flags, artificial coordination, and rug patterns in this
 """
 
             # Call Gemini
-            response = self.model.generate_content(
-                f"{self.system_prompt}\n\n{context_message}",
-                safety_settings=[
-                    {
-                        "category": genai.types.HarmCategory.HARM_CATEGORY_UNSPECIFIED,
-                        "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE,
-                    }
-                ],
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=f"{self.system_prompt}\n\n{context_message}",
+                config=types.GenerateContentConfig(temperature=0.7),
             )
 
             # Extract and return the plain text response
-            skeptic_case = response.text.strip()
+            skeptic_case = (response.text or "").strip()
             return skeptic_case
 
         except Exception as e:

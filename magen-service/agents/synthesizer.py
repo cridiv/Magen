@@ -1,14 +1,12 @@
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 
 class Synthesizer:
     def __init__(self, api_key: str):
         """Initialize the Synthesizer with Gemini API key"""
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            generation_config=genai.types.GenerationConfig(temperature=0.3),
-        )
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = "gemini-2.5-flash"
         # Load the system prompt
         with open("prompts/synthesizer.txt", "r") as f:
             self.system_prompt = f.read()
@@ -43,18 +41,14 @@ Synthesize both cases into a balanced, human-readable verdict.
 """
 
             # Call Gemini
-            response = self.model.generate_content(
-                f"{self.system_prompt}\n\n{context_message}",
-                safety_settings=[
-                    {
-                        "category": genai.types.HarmCategory.HARM_CATEGORY_UNSPECIFIED,
-                        "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE,
-                    }
-                ],
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=f"{self.system_prompt}\n\n{context_message}",
+                config=types.GenerateContentConfig(temperature=0.3),
             )
 
             # Extract and return the plain text response
-            synthesis = response.text.strip()
+            synthesis = (response.text or "").strip()
             return synthesis
 
         except Exception as e:

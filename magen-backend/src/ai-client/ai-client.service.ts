@@ -69,13 +69,13 @@ export class AiClientService {
   private readonly logger = new Logger(AiClientService.name)
   private readonly client: AxiosInstance
 
-  private readonly MAX_RETRIES = 3
-  private readonly BASE_DELAY_MS = 1000
+  private readonly MAX_RETRIES = Number(process.env.AI_MAX_RETRIES ?? 3)
+  private readonly BASE_DELAY_MS = Number(process.env.AI_RETRY_BASE_DELAY_MS ?? 1000)
 
   constructor() {
     this.client = axios.create({
       baseURL: process.env.AI_SERVICE_URL ?? 'http://localhost:8000',
-      timeout: 30_000,
+      timeout: Number(process.env.AI_SERVICE_TIMEOUT_MS ?? 60_000),
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -104,6 +104,37 @@ export class AiClientService {
       if (!data || typeof data !== 'object') {
         this.logger.warn(`${route} returned non-object response — skipping token`)
         return { success: false, reason: 'malformed_response', retryable: false }
+      }
+
+      // FastAPI can return structured errors with HTTP 200; treat those as failures.
+      const bodyError = this.toAiErrorResponse(data)
+      if (bodyError) {
+        const waitMs = bodyError.retry_after_ms ?? this.BASE_DELAY_MS * attempt
+        this.logger.warn(
+          `${route} returned logical error: ${bodyError.error} (retryable=${bodyError.retryable})`,
+        )
+
+        if (bodyError.retryable && attempt < this.MAX_RETRIES) {
+          await this.delay(waitMs)
+          return this.callWithRetry<T>(route, payload, attempt + 1)
+        }
+
+        return {
+          success: false,
+          reason: bodyError.error ?? 'logical_error',
+          retryable: bodyError.retryable,
+        }
+      }
+
+      // Route-specific schema checks to avoid propagating undefined fields.
+      if (route === '/classify' && !this.isClassifyResponse(data)) {
+        this.logger.error(`${route} returned malformed classifier payload`)
+        return { success: false, reason: 'malformed_classify_response', retryable: false }
+      }
+
+      if (route === '/debate' && !this.isDebateResponse(data)) {
+        this.logger.error(`${route} returned malformed debate payload`)
+        return { success: false, reason: 'malformed_debate_response', retryable: false }
       }
 
       return { success: true, data }
@@ -181,5 +212,53 @@ export class AiClientService {
 
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  private isClassifyResponse(data: unknown): data is ClassifyResponse {
+    if (!data || typeof data !== 'object') return false
+
+    const d = data as Record<string, unknown>
+    return (
+      typeof d.worth_debating === 'boolean' &&
+      typeof d.cultural_archetype === 'string' &&
+      typeof d.bot_suspicion_score === 'number' &&
+      typeof d.irony_signal === 'boolean' &&
+      typeof d.reasoning === 'string'
+    )
+  }
+
+  private isDebateResponse(data: unknown): data is DebateResponse {
+    if (!data || typeof data !== 'object') return false
+
+    const d = data as Record<string, unknown>
+    return (
+      typeof d.optimist === 'string' &&
+      typeof d.skeptic === 'string' &&
+      typeof d.synthesis === 'string' &&
+      typeof d.verdict_tag === 'string' &&
+      typeof d.confidence_signal === 'string' &&
+      typeof d.cultural_archetype === 'string'
+    )
+  }
+
+  private toAiErrorResponse(data: unknown): AiErrorResponse | null {
+    if (!data || typeof data !== 'object') return null
+
+    const d = data as Record<string, unknown>
+    if (
+      typeof d.error === 'string' &&
+      typeof d.message === 'string' &&
+      typeof d.retryable === 'boolean'
+    ) {
+      return {
+        error: d.error,
+        message: d.message,
+        retryable: d.retryable,
+        retry_after_ms:
+          typeof d.retry_after_ms === 'number' ? d.retry_after_ms : undefined,
+      }
+    }
+
+    return null
   }
 }

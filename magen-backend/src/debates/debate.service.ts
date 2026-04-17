@@ -2,7 +2,46 @@ import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { AiClientService, ClassifyRequest } from '../ai-client/ai-client.service'
 import { BriefsGateway } from '../briefs/briefs.gateway'
-import { Token, SignalSnapshot } from '@prisma/client'
+
+export type DebateTokenInput = {
+  address: string
+  name?: string
+  symbol: string
+  holderCount: number
+  mentionCount1h: number
+}
+
+export type DebateSignalInput = {
+  txVelocityDelta: number
+  buyPressureRatio?: number
+  top10Concentration?: number
+  holderGrowthRate?: number
+  lpDepthUsd: number
+  tokenAgeHrs: number
+}
+
+export interface ProcessTokenResult {
+  classified: boolean
+  worthDebating: boolean
+  briefCreated: boolean
+  classifier?: {
+    worth_debating: boolean
+    cultural_archetype: string
+    bot_suspicion_score: number
+    irony_signal: boolean
+    reasoning: string
+  }
+  debate?: {
+    optimist: string
+    skeptic: string
+    synthesis: string
+    verdict_tag: string
+    confidence_signal: string
+    cultural_archetype: string
+  }
+  reason?: string
+  briefId?: string
+}
 
 @Injectable()
 export class DebateService {
@@ -25,26 +64,26 @@ export class DebateService {
 
   // ─── Entry point — called by FilterService after a token passes ───────────
 
-  async processToken(token: Token, signal: SignalSnapshot): Promise<void> {
+  async processToken(token: DebateTokenInput, signal: DebateSignalInput): Promise<ProcessTokenResult> {
     const address = token.address
 
     // Check cooldown
     if (this.isOnCooldown(address)) {
       this.logger.debug(`${token.symbol} is on cooldown — skipping`)
-      return
+      return { classified: false, worthDebating: false, briefCreated: false, reason: 'cooldown' }
     }
 
     // Check suppression memory
     if (this.isSuppressed(address)) {
       this.logger.warn(`${token.symbol} suppressed — high bot suspicion on 3+ consecutive calls`)
-      return
+      return { classified: false, worthDebating: false, briefCreated: false, reason: 'suppressed' }
     }
 
     // Build classify payload
     const classifyPayload: ClassifyRequest = {
       token: {
         address: token.address,
-        name: token.name,
+        name: token.name ?? token.symbol,
         symbol: token.symbol,
         holderCount: token.holderCount,
         mentionCount1h: token.mentionCount1h,
@@ -56,9 +95,9 @@ export class DebateService {
       },
       signal: {
         txVelocityDelta: signal.txVelocityDelta,
-        buyPressureRatio: signal.buyPressureRatio,
-        top10Concentration: signal.top10Concentration,
-        holderGrowthRate: signal.holderGrowthRate,
+        buyPressureRatio: signal.buyPressureRatio ?? 0,
+        top10Concentration: signal.top10Concentration ?? 0,
+        holderGrowthRate: signal.holderGrowthRate ?? 0,
         lpDepthUsd: signal.lpDepthUsd,
         tokenAgeHrs: signal.tokenAgeHrs,
       },
@@ -71,22 +110,41 @@ export class DebateService {
     if (!classifyResult.success) {
       this.logger.warn(`Classify failed for ${token.symbol}: ${classifyResult.reason}`)
       await this.logPipeline(token.address, 'classify_failed', classifyResult.reason)
-      return
+      return { classified: false, worthDebating: false, briefCreated: false, reason: classifyResult.reason }
     }
 
     const classifier = classifyResult.data
+
+    if (
+      typeof classifier.worth_debating !== 'boolean' ||
+      typeof classifier.cultural_archetype !== 'string' ||
+      typeof classifier.bot_suspicion_score !== 'number' ||
+      typeof classifier.irony_signal !== 'boolean' ||
+      typeof classifier.reasoning !== 'string'
+    ) {
+      this.logger.error(`Classify returned invalid payload for ${token.symbol}`)
+      await this.logPipeline(token.address, 'classify_failed', 'invalid_classifier_payload')
+      return {
+        classified: false,
+        worthDebating: false,
+        briefCreated: false,
+        reason: 'invalid_classifier_payload',
+      }
+    }
 
     // Save classifier output
     await this.prisma.classifierOutput.create({
       data: {
         tokenAddress: token.address,
-        worthDebatING: classifier.worth_debating,
+        worthDebating: classifier.worth_debating,
         culturalArchetype: classifier.cultural_archetype,
         botSuspicionScore: classifier.bot_suspicion_score,
         ironySignal: classifier.irony_signal,
         reasoning: classifier.reasoning,
       },
     })
+
+    await this.logPipeline(token.address, 'classified', classifier.reasoning)
 
     // Update suppression memory
     this.updateBotSuspicion(address, classifier.bot_suspicion_score)
@@ -95,7 +153,12 @@ export class DebateService {
     if (!classifier.worth_debating) {
       this.logger.log(`${token.symbol} not worth debating — skipping debate`)
       await this.logPipeline(token.address, 'skipped_debate', 'worth_debating: false')
-      return
+      return {
+        classified: true,
+        worthDebating: false,
+        briefCreated: false,
+        classifier,
+      }
     }
 
     // ── Step 2: Debate ──────────────────────────────────────────────────────
@@ -109,7 +172,13 @@ export class DebateService {
     if (!debateResult.success) {
       this.logger.warn(`Debate failed for ${token.symbol}: ${debateResult.reason}`)
       await this.logPipeline(token.address, 'debate_failed', debateResult.reason)
-      return
+      return {
+        classified: true,
+        worthDebating: true,
+        briefCreated: false,
+        classifier,
+        reason: debateResult.reason,
+      }
     }
 
     const debate = debateResult.data
@@ -139,6 +208,15 @@ export class DebateService {
 
     this.logger.log(`Brief created and emitted for ${token.symbol} — "${debate.verdict_tag}"`)
     await this.logPipeline(token.address, 'brief_created', debate.verdict_tag)
+
+    return {
+      classified: true,
+      worthDebating: true,
+      briefCreated: true,
+      classifier,
+      debate,
+      briefId: brief.id,
+    }
   }
 
   // ─── Cooldown ─────────────────────────────────────────────────────────────
