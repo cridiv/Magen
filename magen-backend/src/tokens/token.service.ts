@@ -17,6 +17,8 @@ export class TokenService {
   private readonly logger = new Logger(TokenService.name);
   private readonly forceAiPipeline = process.env.FORCE_AI_PIPELINE === 'true';
 
+  private readonly transientDbErrorCodes = new Set(['P1001', 'P2024']);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly filterService: FilterService,
@@ -49,6 +51,8 @@ export class TokenService {
 
     for (const item of items) {
       try {
+        await this.upsertToken(item);
+
         const filterInput = {
   address: item.address,
   symbol: item.symbol,
@@ -76,7 +80,7 @@ export class TokenService {
           aiResult = await this.debateService.processToken(filterInput, signalInput);
         }
 
-        await this.prisma.pipelineLog.create({
+        await this.safePipelineLog({
           data: {
             tokenAddress: item.address,
             eventType: passesFilter ? 'filter_pass' : 'filter_fail',
@@ -102,6 +106,17 @@ export class TokenService {
         );
       } catch (error) {
         this.logger.error(`Failed to ingest token ${item.address}`, error);
+        await this.safePipelineLog({
+          data: {
+            tokenAddress: item.address,
+            eventType: 'ingest_error',
+            message: 'Token ingestion failed',
+            metadata: {
+              symbol: item.symbol,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          },
+        });
       }
     }
 
@@ -110,5 +125,47 @@ export class TokenService {
       processed: results.length,
       results,
     };
+  }
+
+  private async upsertToken(item: IngestTokenItemDto): Promise<void> {
+    await this.prisma.token.upsert({
+      where: { address: item.address },
+      create: {
+        address: item.address,
+        name: item.name,
+        symbol: item.symbol,
+        holderCount: item.holderCount,
+        mentionCount1h: item.mentionCount1h,
+      },
+      update: {
+        name: item.name,
+        symbol: item.symbol,
+        holderCount: item.holderCount,
+        mentionCount1h: item.mentionCount1h,
+      },
+    });
+  }
+
+  private async safePipelineLog(
+    args: Parameters<PrismaService['pipelineLog']['create']>[0],
+  ): Promise<void> {
+    try {
+      await this.prisma.pipelineLog.create(args);
+    } catch (error) {
+      const code =
+        typeof error === 'object' &&
+        error &&
+        'code' in error &&
+        typeof (error as { code?: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : undefined;
+
+      if (code && this.transientDbErrorCodes.has(code)) {
+        this.logger.warn(`Skipping pipeline log write due to transient DB error (${code})`);
+        return;
+      }
+
+      this.logger.error('Failed to write pipeline log', error);
+    }
   }
 }

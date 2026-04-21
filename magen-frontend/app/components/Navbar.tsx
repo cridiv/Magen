@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -24,7 +24,7 @@ const NavBar = () => {
         </div>
         <div className="flex items-center space-x-4">
           <Link
-            href="/signin"
+            href="/dashboard"
             className="appearance-none cursor-pointer px-6 py-1 font-heading rounded-full text-sm bg-white/10 border border-white/20 hover:bg-white/20 focus-visible:bg-white/20 text-white backdrop-blur-sm transition-all duration-200"
           >
             Sign in

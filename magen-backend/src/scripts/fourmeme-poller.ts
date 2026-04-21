@@ -57,6 +57,11 @@ type IngestResponse = {
 
 const NESTJS_INGEST_URL =
   process.env.NESTJS_INGEST_URL ?? 'http://localhost:5000/tokens/ingest';
+const NESTJS_INGEST_TIMEOUT_MS = Number(
+  process.env.NESTJS_INGEST_TIMEOUT_MS ?? 90000,
+);
+const NESTJS_INGEST_RETRIES = Number(process.env.NESTJS_INGEST_RETRIES ?? 2);
+const NESTJS_BATCH_DELAY_MS = Number(process.env.NESTJS_BATCH_DELAY_MS ?? 800);
 const BATCH_SIZE = 6;
 let pollInFlight = false;
 
@@ -106,6 +111,41 @@ function extractText(value: unknown): string {
 
 async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendIngestBatch(payload: { tokens: IngestTokenItem[] }): Promise<IngestResponse> {
+  for (let attempt = 1; attempt <= NESTJS_INGEST_RETRIES; attempt++) {
+    try {
+      const response = await axios.post<IngestResponse>(
+        NESTJS_INGEST_URL,
+        payload,
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: NESTJS_INGEST_TIMEOUT_MS,
+        },
+      );
+
+      return response.data;
+    } catch (error) {
+      const isLastAttempt = attempt === NESTJS_INGEST_RETRIES;
+
+      if (isLastAttempt) {
+        throw error;
+      }
+
+      const reason =
+        axios.isAxiosError(error) && error.code === 'ECONNABORTED'
+          ? 'timeout'
+          : 'request_error';
+
+      console.warn(
+        `⚠️ Ingest batch attempt ${attempt}/${NESTJS_INGEST_RETRIES} failed (${reason}), retrying...`,
+      );
+      await delay(1000 * attempt);
+    }
+  }
+
+  throw new Error('Ingest batch failed after retries');
 }
 
 async function fetchFourmemeOutput(): Promise<string | null> {
@@ -241,17 +281,10 @@ async function pollAndIngest(): Promise<void> {
       );
 
       try {
-        const response = await axios.post<IngestResponse>(
-          NESTJS_INGEST_URL,
-          payload,
-          {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 12000,
-          },
-        );
+        const response = await sendIngestBatch(payload);
 
         console.log('✅ Light batch successful');
-        console.log(`   Processed: ${response.data.processed ?? batch.length}`);
+        console.log(`   Processed: ${response.processed ?? batch.length}`);
       } catch (error: unknown) {
         if (axios.isAxiosError(error)) {
           console.error(
@@ -263,6 +296,10 @@ async function pollAndIngest(): Promise<void> {
         } else {
           console.error('❌ Light batch failed:', String(error));
         }
+      }
+
+      if (index + BATCH_SIZE < lightBatch.length) {
+        await delay(NESTJS_BATCH_DELAY_MS);
       }
     }
   } catch (error: unknown) {

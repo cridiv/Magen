@@ -17,10 +17,10 @@ type SignalInput = {
 export class FilterService {
   private readonly logger = new Logger(FilterService.name);
 
-  private readonly MIN_HOLDERS = 80;
-  private readonly MIN_MENTIONS_1H = 15;
-  private readonly MIN_LP_DEPTH_USD = 5000;
-  private readonly MIN_VELOCITY = 0.9;
+  private readonly MIN_HOLDERS = 20;
+  private readonly MIN_MENTIONS_1H = 0;
+  private readonly MIN_LP_DEPTH_USD = 4500;
+  private readonly MIN_VELOCITY = 0.6;
   private readonly MAX_AGE_HOURS = 10;
 
   evaluateFilter(token: FilterInput, signal: SignalInput): { passes: boolean; reasons: string[] } {

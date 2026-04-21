@@ -133,16 +133,28 @@ export class DebateService {
     }
 
     // Save classifier output
-    await this.prisma.classifierOutput.create({
-      data: {
-        tokenAddress: token.address,
+    try {
+      await this.prisma.classifierOutput.create({
+        data: {
+          tokenAddress: token.address,
+          worthDebating: classifier.worth_debating,
+          culturalArchetype: classifier.cultural_archetype,
+          botSuspicionScore: classifier.bot_suspicion_score,
+          ironySignal: classifier.irony_signal,
+          reasoning: classifier.reasoning,
+        },
+      })
+    } catch (error) {
+      this.logger.error(`Failed to persist classifier output for ${token.symbol}`, error)
+      await this.logPipeline(token.address, 'classify_persist_failed', 'db_write_failed')
+      return {
+        classified: true,
         worthDebating: classifier.worth_debating,
-        culturalArchetype: classifier.cultural_archetype,
-        botSuspicionScore: classifier.bot_suspicion_score,
-        ironySignal: classifier.irony_signal,
-        reasoning: classifier.reasoning,
-      },
-    })
+        briefCreated: false,
+        classifier,
+        reason: 'classify_persist_failed',
+      }
+    }
 
     await this.logPipeline(token.address, 'classified', classifier.reasoning)
 
@@ -188,17 +200,31 @@ export class DebateService {
       ? debate.synthesis
       : 'Synthesis unavailable — debate data preserved.'
 
-    const brief = await this.prisma.memeBrief.create({
-      data: {
-        tokenAddress: token.address,
-        optimist: debate.optimist,
-        skeptic: debate.skeptic,
-        synthesis,
-        verdictTag: debate.verdict_tag,
-        confidenceSignal: debate.confidence_signal,
-        culturalArchetype: debate.cultural_archetype,
-      },
-    })
+    let brief
+    try {
+      brief = await this.prisma.memeBrief.create({
+        data: {
+          tokenAddress: token.address,
+          optimist: debate.optimist,
+          skeptic: debate.skeptic,
+          synthesis,
+          verdictTag: debate.verdict_tag,
+          confidenceSignal: debate.confidence_signal,
+          culturalArchetype: debate.cultural_archetype,
+        },
+      })
+    } catch (error) {
+      this.logger.error(`Failed to persist meme brief for ${token.symbol}`, error)
+      await this.logPipeline(token.address, 'brief_persist_failed', 'db_write_failed')
+      return {
+        classified: true,
+        worthDebating: true,
+        briefCreated: false,
+        classifier,
+        debate,
+        reason: 'brief_persist_failed',
+      }
+    }
 
     // ── Step 4: Set cooldown ────────────────────────────────────────────────
     this.cooldowns.set(address, Date.now())
