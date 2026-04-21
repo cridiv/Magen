@@ -144,15 +144,6 @@ The dashboard is designed to communicate the product's value in under ten second
 
 ---
 
-## Team
-
-| Name | Role | Stack |
-|---|---|---|
-| Joshua | Frontend & Blockchain Integration | Next.js, BSC RPC, Four.meme CLI |
-| James | Backend Operations | NestJS, PostgreSQL, WebSocket |
-| Ezekiel | AI/ML Integrations | Python, Gemini 2.5 Flash |
-
----
 
 ## Stack
 
