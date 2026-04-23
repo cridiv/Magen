@@ -1,53 +1,137 @@
 "use client";
+
 import React from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { motion, useScroll, useTransform } from "framer-motion";
 
-const Hero = () => {
-  const { scrollY } = useScroll();
-
-  const y1 = useTransform(scrollY, [0, 1000], [0, 1]);
-
+export default function Hero() {
   return (
-    <div className="relative min-h-screen w-full p-0 md:p-8 flex items-center justify-center bg-[rgb(25, 26, 31)]">
-      {/* Windowed Container for Larger Devices */}
-      <motion.div
-        initial={{ translateX: "-100px", opacity: 0 }}
-        whileInView={{ translateX: "0px", opacity: 1 }}
-        transition={{ type: "spring", duration: 3 }}
-        viewport={{ once: true }}
-        style={{ y: y1 }}
-        className="relative w-full max-w-5xl mx-auto bg-linear-60 from-amber-500 to-blue-500 rounded-none md:rounded-3xl overflow-hidden shadow-none md:shadow-2xl"
+    <section
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "calc(100vh - 56px)",
+        padding: "80px 24px",
+        maxWidth: 720,
+        margin: "0 auto",
+        textAlign: "center",
+      }}
+    >
+      {/* Headline */}
+      <h1
+        style={{
+          fontSize: 48,
+          fontWeight: 600,
+          lineHeight: 1.15,
+          letterSpacing: "-0.03em",
+          color: "var(--text)",
+          marginBottom: 20,
+        }}
       >
-        {/* Content Section */}
-        <div className="relative z-10 flex items-center justify-center min-h-screen md:min-h-[80vh] p-6 md:p-12">
-          <div className="w-full max-w-4xl mx-auto text-center">
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight">
-              Multi-agent <br />
-              <span className="bg-[#f5f5f5] bg-clip-text text-transparent">
-                AI debate system
-              </span>
-            </h1>
+        Meme token intelligence,
+        <br />
+        <span style={{ color: "var(--text-2)" }}>by adversarial debate.</span>
+      </h1>
 
-            <p className="text-xl md:text-2xl text-gray-200 mb-8 max-w-2xl mx-auto leading-relaxed">
-              Built for the Four.meme AI Sprint
-            </p>
+      {/* Description */}
+      <p
+        style={{
+          fontSize: 16,
+          lineHeight: 1.6,
+          color: "var(--text-2)",
+          maxWidth: 520,
+          marginBottom: 40,
+        }}
+      >
+        Autonomous AI agents evaluate newly launched tokens on BNB Chain.
+        Real-time cultural analysis and manipulation detection.
+      </p>
 
-            <div className="flex justify-center">
-              <Link
-                href="/signin"
-                className="group relative px-8 py-4 bg-[#0f0f0f] cursor-pointer text-white font-semibold rounded-full shadow-lg border-none hover:-translate-y-1 transition-all duration-300 transform hover:scale-105"
-              >
-                <span className="relative z-10">Get Started</span>
-                <div className="absolute inset-0  bg-[#1a1a1a] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </motion.div>
+      {/* CTA */}
+      <Link
+        href="/dashboard"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "10px 24px",
+          fontSize: 14,
+          fontWeight: 500,
+          color: "var(--bg)",
+          background: "var(--text)",
+          borderRadius: 8,
+          border: "none",
+          cursor: "pointer",
+          transition: "opacity 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.opacity = "0.85";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.opacity = "1";
+        }}
+      >
+        Open Dashboard
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          style={{ marginLeft: 2 }}
+        >
+          <path
+            d="M6 3l5 5-5 5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </Link>
+
+      {/* Features */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 40,
+          marginTop: 80,
+          width: "100%",
+          maxWidth: 600,
+        }}
+      >
+        <Feature title="Multi-agent debate" desc="Optimist vs Skeptic — adversarial AI analysis that resists gaming." />
+        <Feature title="On-chain signal" desc="TX velocity, LP depth, holder distribution from BSC in real time." />
+        <Feature title="Live verdicts" desc="Plain-English cultural briefs, published autonomously." />
+      </div>
+    </section>
+  );
+}
+
+function Feature({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      <h3
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--text)",
+          marginBottom: 6,
+          letterSpacing: "-0.01em",
+        }}
+      >
+        {title}
+      </h3>
+      <p
+        style={{
+          fontSize: 12,
+          lineHeight: 1.5,
+          color: "var(--text-3)",
+        }}
+      >
+        {desc}
+      </p>
     </div>
   );
-};
-
-export default Hero;
+}

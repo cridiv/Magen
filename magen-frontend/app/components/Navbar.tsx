@@ -1,38 +1,142 @@
 "use client";
+
 import React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
-const NavBar = () => {
-  const router = useRouter();
+export default function Navbar() {
+  const pathname = usePathname();
 
   return (
-    <header className="pb-2 sticky top-0 w-full shrink-0 bg-primary/50 backdrop-blur-xl z-30">
-      <div className="flex justify-between items-center gap-5 w-full max-w-7xl px-2 md:px-6 h-[3.5rem] mx-auto">
-        <div
-          role="link"
-          tabIndex={0}
-          className="select-none cursor-pointer outline-0"
-          onClick={() => router.push("/")}
+    <header
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 40,
+        borderBottom: "1px solid var(--border)",
+        background: "var(--bg)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          maxWidth: 1120,
+          margin: "0 auto",
+          padding: "0 24px",
+          height: 56,
+        }}
+      >
+        {/* Logo */}
+        <Link
+          href="/"
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 8,
+          }}
         >
-          <h1 className="text-[24px] ">
-            Magen{" "}
-            <span className="text-sm text-white  p-1.5 border-solid border-[1.3px] border-white rounded-full">
-              Beta
-            </span>
-          </h1>
-        </div>
-        <div className="flex items-center space-x-4">
-          <Link
-            href="/dashboard"
-            className="appearance-none cursor-pointer px-6 py-1 font-heading rounded-full text-sm bg-white/10 border border-white/20 hover:bg-white/20 focus-visible:bg-white/20 text-white backdrop-blur-sm transition-all duration-200"
+          <span
+            style={{
+              fontSize: 17,
+              fontWeight: 600,
+              letterSpacing: "-0.02em",
+              color: "var(--text)",
+            }}
           >
-            Sign in
-          </Link>
-        </div>
+            Magen
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 500,
+              color: "var(--text-3)",
+              fontFamily: "var(--font-mono)",
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+            }}
+          >
+            Beta
+          </span>
+        </Link>
+
+        {/* Right nav */}
+        <nav style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <NavLink href="/dashboard" active={pathname === "/dashboard"}>
+            Dashboard
+          </NavLink>
+          <NavLink
+            href="https://github.com"
+            external
+          >
+            GitHub
+          </NavLink>
+        </nav>
       </div>
     </header>
   );
-};
+}
 
-export default NavBar;
+function NavLink({
+  href,
+  children,
+  active,
+  external,
+}: {
+  href: string;
+  children: React.ReactNode;
+  active?: boolean;
+  external?: boolean;
+}) {
+  const style: React.CSSProperties = {
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontSize: 13,
+    fontWeight: 500,
+    color: active ? "var(--text)" : "var(--text-2)",
+    background: active ? "var(--surface)" : "transparent",
+    transition: "color 0.15s, background 0.15s",
+    cursor: "pointer",
+  };
+
+  if (external) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={style}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "var(--text)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--text-2)";
+        }}
+      >
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      style={style}
+      onMouseEnter={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = "var(--text)";
+          e.currentTarget.style.background = "var(--surface)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = "var(--text-2)";
+          e.currentTarget.style.background = "transparent";
+        }
+      }}
+    >
+      {children}
+    </Link>
+  );
+}

@@ -7,7 +7,9 @@ export default function ReplayModal({ onStart, onClose }: {
   onClose: () => void
 }) {
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
     document.addEventListener('keydown', handler)
     document.body.style.overflow = 'hidden'
     return () => {
@@ -18,68 +20,158 @@ export default function ReplayModal({ onStart, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 50,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
     >
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      {/* Backdrop */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0, 0, 0, 0.75)' }} />
 
-      <div className="relative w-full max-w-md bg-[#0f0f11] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden">
-        {/* Top accent */}
-        <div className="h-px w-full bg-purple-500/60" />
-
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg">
-                ▶
-              </div>
-              <div>
-                <h3 className="font-semibold text-base tracking-tight">Replay Mode</h3>
-                <p className="text-zinc-500 text-xs">Demo playback</p>
-              </div>
+      {/* Modal */}
+      <div
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 400,
+          background: 'var(--surface)',
+          border: '1px solid var(--border-h)',
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: 24 }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 4, letterSpacing: '-0.01em' }}>
+                Replay Mode
+              </h3>
+              <p style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                Demo playback
+              </p>
             </div>
             <button
               onClick={onClose}
-              className="text-zinc-600 hover:text-white transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-3)',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'flex',
+                borderRadius: 6,
+                transition: 'color 0.12s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-3)' }}
             >
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </button>
           </div>
 
-          <p className="text-zinc-400 text-sm leading-relaxed mb-5">
-            Drip-feeds cached briefs at 1.8s intervals. Clears the current feed and replays all loaded briefs in chronological order.
+          {/* Description */}
+          <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 20 }}>
+            Replays cached briefs at 1.8s intervals. Clears the current feed and plays all loaded briefs in order.
           </p>
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest mb-1">Interval</p>
-              <p className="text-white font-semibold text-sm font-mono">1.8s / brief</p>
-            </div>
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest mb-1">Mode</p>
-              <p className="text-white font-semibold text-sm font-mono">Chronological</p>
-            </div>
+          {/* Details */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+            <DetailBox label="Interval" value="1.8s / brief" />
+            <DetailBox label="Order" value="Chronological" />
           </div>
 
-          <div className="flex gap-3">
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:text-white hover:bg-white/[0.06] text-sm font-medium transition-all"
+              style={{
+                flex: 1,
+                padding: '9px 0',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text-2)',
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: 'pointer',
+                transition: 'border-color 0.12s, color 0.12s',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+                e.currentTarget.style.color = 'var(--text)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
+                e.currentTarget.style.color = 'var(--text-2)'
+              }}
             >
               Cancel
             </button>
             <button
               onClick={onStart}
-              className="flex-1 py-2.5 rounded-xl border border-purple-500/40 bg-purple-500/15 text-purple-300 hover:bg-purple-500/25 text-sm font-semibold transition-all"
+              style={{
+                flex: 1,
+                padding: '9px 0',
+                borderRadius: 8,
+                border: '1px solid var(--accent)',
+                background: 'var(--accent)',
+                color: 'var(--bg)',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'opacity 0.12s',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.85' }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
             >
-              ▶ Start Replay
+              Start Replay
             </button>
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function DetailBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        padding: 10,
+        borderRadius: 6,
+        background: 'var(--bg)',
+        border: '1px solid var(--border)',
+      }}
+    >
+      <p
+        style={{
+          fontSize: 10,
+          fontFamily: 'var(--font-mono)',
+          fontWeight: 500,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: 'var(--text-3)',
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </p>
+      <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+        {value}
+      </p>
     </div>
   )
 }
