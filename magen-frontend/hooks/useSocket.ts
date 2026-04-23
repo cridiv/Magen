@@ -47,19 +47,23 @@ export function useSocket({ onBrief, onAgentLog }: UseSocketOptions) {
           setStatus('disconnected')
         })
 
-        socket.on('brief:new', (brief: MemeBrief) => {
+        socket.on('brief:new', (...args: unknown[]) => {
+          const brief = args[0] as MemeBrief
           onBrief(brief)
         })
 
-        socket.on('backend:log', (log: AgentLog) => {
+        socket.on('backend:log', (...args: unknown[]) => {
+          const log = args[0] as AgentLog
           onAgentLog?.(log)
         })
 
-        socket.on('agent:log', (log: AgentLog) => {
+        socket.on('agent:log', (...args: unknown[]) => {
+          const log = args[0] as AgentLog
           onAgentLog?.(log)
         })
 
-        socket.on('pipeline:error', (err: PipelineError) => {
+        socket.on('pipeline:error', (...args: unknown[]) => {
+          const err = args[0] as PipelineError
           setErrors(prev => [err, ...prev].slice(0, 10))
         })
       } catch {
