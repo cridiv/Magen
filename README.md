@@ -36,33 +36,17 @@ That line is generated autonomously by Gemini 2.5 Flash, live on screen, for a r
 
 ## Architecture
 
-```
-Four.meme CLI  ──────────────────────────────────────────────────
-  token-rankings (newest, 40s poll)                              │
-  on-chain signal: LP depth, tx velocity, holder count           │
-                                                                  ▼
-NestJS Backend  ─────────────────────────────────────────────────
-  Token intake + upsert                                          │
-  Rule-based filter (velocity, LP depth, holder count)           │
-  Debate orchestrator                                            │
-  Cooldown + suppression memory                                  │
-  WebSocket gateway (brief:new, pipeline:error)                  │
-  REST API (GET /briefs, paginated)                              │
-                                                                  ▼
-Python AI Service (FastAPI + Gemini 2.5 Flash)  ─────────────────
-  POST /classify  → cultural archetype, bot suspicion score,     │
-                    irony signal, worth_debating flag             │
-  POST /debate    → Optimist + Skeptic in parallel               │
-                    (asyncio.gather, temp 0.7)                    │
-                    Synthesizer produces final verdict            │
-                    (temp 0.3)                                    │
-                                                                  ▼
-Next.js Dashboard  ──────────────────────────────────────────────
-  Live brief feed via WebSocket                                  │
-  Confidence signal colour-coding                                │
-  Full Optimist / Skeptic / Synthesis per brief                  │
-  Replay mode for demo reliability                               │
-  Pipeline health monitoring                                      │
+```mermaid
+flowchart TD
+    A["<b>Four.meme CLI</b><br/>• token-rankings (newest, 40s poll)<br/>• on-chain signal: LP depth, tx velocity, holder count"]
+    
+    B["<b>NestJS Backend</b><br/>• Token intake + upsert<br/>• Rule-based filter (velocity, LP depth, holder count)<br/>• Debate orchestrator<br/>• Cooldown + suppression memory<br/>• WebSocket gateway (brief:new, pipeline:error)<br/>• REST API (GET /briefs, paginated)"]
+    
+    C["<b>Python AI Service (FastAPI + Gemini 2.5 Flash)</b><br/>• POST /classify → cultural archetype, bot suspicion score, irony signal, worth_debating flag<br/>• POST /debate → Optimist + Skeptic in parallel (asyncio.gather, temp 0.7)<br/>• Synthesizer produces final verdict (temp 0.3)"]
+    
+    D["<b>Next.js Dashboard</b><br/>• Live brief feed via WebSocket<br/>• Confidence signal colour-coding<br/>• Full Optimist / Skeptic / Synthesis per brief<br/>• Replay mode for demo reliability<br/>• Pipeline health monitoring"]
+    
+    A --> B --> C --> D
 ```
 
 **Key architectural principle:** NestJS is the brain — it owns all orchestration, persistence, and business logic. The Python service is a pure AI microservice — it receives structured context, returns structured JSON, and knows nothing about the database. The frontend talks only to NestJS, never directly to the AI service.
