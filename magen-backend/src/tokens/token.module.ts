@@ -4,9 +4,10 @@ import { TokenService } from './token.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FilterModule } from '../filters/filter.module';
 import { DebateModule } from '../debates/debate.module';
+import { GatewayModule } from '../gateway/gateway.module';
 
 @Module({
-  imports: [PrismaModule, FilterModule, DebateModule],
+  imports: [PrismaModule, FilterModule, DebateModule, GatewayModule],
   controllers: [TokenController],
   providers: [TokenService],
   exports: [TokenService],

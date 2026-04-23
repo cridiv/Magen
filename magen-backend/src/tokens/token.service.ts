@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IngestBatchDto, IngestTokenItemDto } from './dto/ingest.dto';
 import { FilterService } from '../filters/filter.service';
 import { DebateService, ProcessTokenResult } from '../debates/debate.service';
+import { BriefsGateway } from '../briefs/briefs.gateway';
 
 type IngestResult = {
   tokenAddress: string;
@@ -23,6 +24,7 @@ export class TokenService {
     private readonly prisma: PrismaService,
     private readonly filterService: FilterService,
     private readonly debateService: DebateService,
+    private readonly briefsGateway: BriefsGateway,
   ) {}
 
   async ingestTokens(dto: IngestBatchDto) {
@@ -47,27 +49,32 @@ export class TokenService {
     }
 
     const results: IngestResult[] = [];
-    this.logger.debug(`Raw payload sample: ${JSON.stringify(dto.tokens?.[0]?.signal)}`);
+    this.logger.debug(
+      `Raw payload sample: ${JSON.stringify(dto.tokens?.[0]?.signal)}`,
+    );
 
     for (const item of items) {
       try {
         await this.upsertToken(item);
 
         const filterInput = {
-  address: item.address,
-  symbol: item.symbol,
-  holderCount: item.holderCount,
-  mentionCount1h: item.mentionCount1h,
-};
+          address: item.address,
+          symbol: item.symbol,
+          holderCount: item.holderCount,
+          mentionCount1h: item.mentionCount1h,
+        };
 
         const signalInput = {
-  txVelocityDelta: item.signal.txVelocityDelta,
-  lpDepthUsd: item.signal.lpDepthUsd,
-  tokenAgeHrs: item.signal.tokenAgeHrs,
-};
+          txVelocityDelta: item.signal.txVelocityDelta,
+          lpDepthUsd: item.signal.lpDepthUsd,
+          tokenAgeHrs: item.signal.tokenAgeHrs,
+        };
 
         // Automatically run filter
-        const filter = this.filterService.evaluateFilter(filterInput, signalInput);
+        const filter = this.filterService.evaluateFilter(
+          filterInput,
+          signalInput,
+        );
         const passesFilter = filter.passes;
         let aiResult: ProcessTokenResult | null = null;
 
@@ -77,15 +84,26 @@ export class TokenService {
               `FORCE_AI_PIPELINE=true -> bypassing filter for ${item.symbol} (${item.address})`,
             );
           }
-          aiResult = await this.debateService.processToken(filterInput, signalInput);
+          aiResult = await this.debateService.processToken(
+            filterInput,
+            signalInput,
+          );
         }
 
         await this.safePipelineLog({
           data: {
             tokenAddress: item.address,
             eventType: passesFilter ? 'filter_pass' : 'filter_fail',
-            message: `Filter ${passesFilter ? 'passed' : 'failed'}`,
-            metadata: { passesFilter, reasons: filter.reasons, holderCount: filterInput.holderCount },
+            message: passesFilter
+              ? `Filter PASSED for ${item.symbol}`
+              : `Filter failed for ${item.symbol}: ${filter.reasons.join(', ')}`,
+            metadata: {
+              passesFilter,
+              symbol: item.symbol,
+              reasons: filter.reasons,
+              holderCount: filterInput.holderCount,
+              lpDepthUsd: signalInput.lpDepthUsd,
+            },
           },
         });
 
@@ -97,13 +115,33 @@ export class TokenService {
           aiResult,
         });
 
-        this.logger.log(
+        const ingestMessage =
           `Ingested token ${item.symbol} (${item.address}) | Filter: ${passesFilter}` +
-            (this.forceAiPipeline && !passesFilter ? ' | AI: forced' : '') +
-            (aiResult
-              ? ` | AI: ${aiResult.briefCreated ? 'brief_created' : aiResult.worthDebating ? 'debated' : 'classified_only'}`
-              : ''),
-        );
+          (this.forceAiPipeline && !passesFilter ? ' | AI: forced' : '') +
+          (aiResult
+            ? ` | AI: ${aiResult.briefCreated ? 'brief_created' : aiResult.worthDebating ? 'debated' : 'classified_only'}`
+            : '');
+
+        this.logger.log(ingestMessage);
+        await this.safePipelineLog({
+          data: {
+            tokenAddress: item.address,
+            eventType: 'ingest_processed',
+            message: ingestMessage,
+            metadata: {
+              symbol: item.symbol,
+              passesFilter,
+              forced: this.forceAiPipeline && !passesFilter,
+              aiOutcome: aiResult
+                ? aiResult.briefCreated
+                  ? 'brief_created'
+                  : aiResult.worthDebating
+                    ? 'debated'
+                    : 'classified_only'
+                : null,
+            },
+          },
+        });
       } catch (error) {
         this.logger.error(`Failed to ingest token ${item.address}`, error);
         await this.safePipelineLog({
@@ -151,6 +189,24 @@ export class TokenService {
   ): Promise<void> {
     try {
       await this.prisma.pipelineLog.create(args);
+
+      const data = args.data as {
+        tokenAddress?: string | null;
+        eventType?: string;
+        message?: string;
+      };
+
+      if (
+        typeof data.eventType === 'string' &&
+        typeof data.message === 'string'
+      ) {
+        this.briefsGateway.emitAgentLog({
+          tokenAddress: data.tokenAddress ?? null,
+          eventType: data.eventType,
+          message: data.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       const code =
         typeof error === 'object' &&
@@ -161,7 +217,9 @@ export class TokenService {
           : undefined;
 
       if (code && this.transientDbErrorCodes.has(code)) {
-        this.logger.warn(`Skipping pipeline log write due to transient DB error (${code})`);
+        this.logger.warn(
+          `Skipping pipeline log write due to transient DB error (${code})`,
+        );
         return;
       }
 

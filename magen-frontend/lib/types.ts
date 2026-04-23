@@ -23,6 +23,13 @@ export interface PipelineError {
   reason: string
 }
 
+export interface AgentLog {
+  tokenAddress: string | null
+  eventType: string
+  message: string
+  timestamp: string
+}
+
 export interface BriefsResponse {
   data: MemeBrief[]
   meta: {

@@ -1,82 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { useSocket } from '../../hooks/useSocket'
-import { fetchRecentBriefs } from '../../lib/api'
-import type { MemeBrief, PipelineError } from '../../lib/types'
+import { fetchRecentBriefs, fetchRecentAgentLogs } from '../../lib/api'
+import type { MemeBrief, PipelineError, AgentLog } from '../../lib/types'
 import BriefModal from './components/BriefModal'
-import ReplayModal from './components/ReplayModal'
-
-// ─── Mock data for replay mode ───────────────────────────────────────────────
-
-const MOCK_BRIEFS: MemeBrief[] = [
-  {
-    id: 'a1b2c3d4e5f6a1b2',
-    tokenAddress: '0x1234567890abcdef1234567890abcdef12345678',
-    culturalArchetype: 'Animal Meme',
-    confidenceSignal: 'Both agents agreed',
-    verdictTag: 'Organic velocity with strong holder retention',
-    synthesis: 'Token exhibits textbook animal meme trajectory — early holder clustering with progressive LP deepening. On-chain velocity aligns with social momentum spikes. Both agents flag this as a potential multi-day runner given current market conditions and narrative tailwinds.',
-    optimist: 'Holder distribution unusually healthy for a 48hr-old token. LP locks signal team conviction. Social graph shows organic spread vs bot amplification. Volume profile matches early PEPE run in 2023.',
-    skeptic: 'Volume is real but concentrated in three wallets. Archetype saturation is high — animal memes face fatigue cycles. Without a unique narrative hook, this could flush on first liquidity test.',
-    postedToTelegram: true,
-    createdAt: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
-    token: { symbol: 'PEPE2', name: 'Pepe Two' },
-  },
-  {
-    id: 'b2c3d4e5f6a1b2c3',
-    tokenAddress: '0xabcdef1234567890abcdef1234567890abcdef12',
-    culturalArchetype: 'Political Satire',
-    confidenceSignal: 'Strongly contested',
-    verdictTag: 'Viral vector but paper-hand trap probable',
-    synthesis: 'Political archetype with memetic reference to recent trending discourse. Pipeline flags anomalous LP injection pattern — possible coordinated launch. High velocity disguises thin sell-side depth beneath surface metrics.',
-    optimist: 'Political memes have outsized viral coefficient. Narrative timing is near-perfect. If it catches a news cycle amplifier, 10x from here is realistic within 72 hours.',
-    skeptic: 'LP injection fingerprints match known rug patterns. Holder count growing but median hold duration is 4 minutes. Dev wallet holds 18% of supply. This is a hard pass.',
-    postedToTelegram: false,
-    createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-    token: { symbol: 'FLOKI3', name: 'Floki Three' },
-  },
-  {
-    id: 'c3d4e5f6a1b2c3d4',
-    tokenAddress: '0x567890abcdef1234567890abcdef1234567890ab',
-    culturalArchetype: 'Meta Meme',
-    confidenceSignal: 'Contested',
-    verdictTag: 'Self-aware archetype with cult potential',
-    synthesis: 'Wojak derivative leveraging intra-community nostalgia. Meta-meme layer adds second-order virality. Debate centers on whether the market has sufficient irony appetite after recent meta-fatigue across the BNB ecosystem.',
-    optimist: 'Meta layer gives this real staying power. Community is self-organizing and self-referential — high retention probability. Reddit crossover detected in social graph.',
-    skeptic: 'Wojak derivatives are a crowded field. Three similar tokens launched this week. Differentiation unclear. Copying a meme meta that peaked 18 months ago rarely works.',
-    postedToTelegram: true,
-    createdAt: new Date(Date.now() - 28 * 60 * 1000).toISOString(),
-    token: { symbol: 'WOJAK', name: 'Wojak Classic' },
-  },
-  {
-    id: 'd4e5f6a1b2c3d4e5',
-    tokenAddress: '0x90abcdef1234567890abcdef1234567890abcdef',
-    culturalArchetype: 'Animal Meme',
-    confidenceSignal: 'Both agents agreed',
-    verdictTag: 'Clean launch with genuine holder momentum',
-    synthesis: 'Cat archetype launched with unusually clean on-chain hygiene. No pre-mine fingerprints detected. LP deployed across three DEX pairs simultaneously indicating strategic preparation. Both agents rate this as a high-conviction entry window.',
-    optimist: 'LP structure is best-in-class for a token this young. Holder count doubling every 3 hours. No suspicious wallet clustering. Strong fundamentals for a meme.',
-    skeptic: 'Cat memes need a hook beyond being cute. Marketing leg unclear. Without influencer pickup in next 6hrs, momentum stalls and liquidity evaporates.',
-    postedToTelegram: true,
-    createdAt: new Date(Date.now() - 55 * 60 * 1000).toISOString(),
-    token: { symbol: 'CATZ', name: 'Catz Finance' },
-  },
-  {
-    id: 'e5f6a1b2c3d4e5f6',
-    tokenAddress: '0xdef1234567890abcdef1234567890abcdef123456',
-    culturalArchetype: 'Absurdist',
-    confidenceSignal: 'Contested',
-    verdictTag: 'Absurdist narrative with niche ceiling',
-    synthesis: 'Absurdist token relying on irony-native audience. On-chain metrics are stable but uninspiring. The archetype has found recent success on Solana but BNB Chain audience skews differently — translation risk is real.',
-    optimist: 'Absurdist memes are having a genuine moment. Discord shows 2k+ members day one, organic not airdropped. This could be the BNB answer to NEIRO.',
-    skeptic: 'Absurdism works in bull markets with high risk appetite. Current sentiment index is neutral. Ceiling here is probably a 3x then fade unless a major KOL picks it up.',
-    postedToTelegram: false,
-    createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-    token: { symbol: 'MOON99', name: 'Moon99' },
-  },
-]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -271,15 +200,11 @@ function BriefRow({ brief, onClick }: { brief: MemeBrief; onClick: () => void })
 
 export default function Dashboard() {
   const [briefs, setBriefs] = useState<MemeBrief[]>([])
+  const [agentLogs, setAgentLogs] = useState<AgentLog[]>([])
   const [filter, setFilter] = useState('all')
   const [selectedBrief, setSelectedBrief] = useState<MemeBrief | null>(null)
-  const [showReplayModal, setShowReplayModal] = useState(false)
-  const [isReplaying, setIsReplaying] = useState(false)
   const [loading, setLoading] = useState(true)
   const [pipelineErrors, setPipelineErrors] = useState<PipelineError[]>([])
-
-  const replayRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const replayIdx = useRef(0)
 
   // ── Add a new brief (deduplicated) ────────────────────────────────────────
 
@@ -290,9 +215,16 @@ export default function Dashboard() {
     })
   }, [])
 
+  const addAgentLog = useCallback((log: AgentLog) => {
+    setAgentLogs((prev) => [log, ...prev].slice(0, 120))
+  }, [])
+
   // ── WebSocket connection ──────────────────────────────────────────────────
 
-  const { status, errors: socketErrors } = useSocket(addBrief)
+  const { status, errors: socketErrors } = useSocket({
+    onBrief: addBrief,
+    onAgentLog: addAgentLog,
+  })
 
   // Sync pipeline errors from socket
   useEffect(() => {
@@ -308,9 +240,13 @@ export default function Dashboard() {
 
     async function load() {
       try {
-        const data = await fetchRecentBriefs(50)
+        const [briefData, logData] = await Promise.all([
+          fetchRecentBriefs(50),
+          fetchRecentAgentLogs(40),
+        ])
         if (!cancelled) {
-          setBriefs(data)
+          setBriefs(briefData)
+          setAgentLogs(logData)
         }
       } catch {
         // Backend offline — leave briefs empty
@@ -321,37 +257,6 @@ export default function Dashboard() {
 
     load()
     return () => { cancelled = true }
-  }, [])
-
-  // ── Replay mode ───────────────────────────────────────────────────────────
-
-  const startReplay = useCallback(() => {
-    setIsReplaying(true)
-    setShowReplayModal(false)
-    setBriefs([])
-    replayIdx.current = 0
-    const queue = [...MOCK_BRIEFS].reverse()
-
-    replayRef.current = setInterval(() => {
-      if (replayIdx.current >= queue.length) {
-        clearInterval(replayRef.current!)
-        setIsReplaying(false)
-        return
-      }
-      addBrief(queue[replayIdx.current++])
-    }, 1800)
-  }, [addBrief])
-
-  const stopReplay = useCallback(() => {
-    if (replayRef.current) clearInterval(replayRef.current)
-    setIsReplaying(false)
-    setBriefs([])
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (replayRef.current) clearInterval(replayRef.current)
-    }
   }, [])
 
   // ── Filtering ─────────────────────────────────────────────────────────────
@@ -378,8 +283,8 @@ export default function Dashboard() {
 
   // ── Status label ──────────────────────────────────────────────────────────
 
-  const statusLabel = isReplaying ? 'Replay' : status === 'live' ? 'Live' : status === 'connecting' ? 'Connecting' : 'Offline'
-  const statusColor = isReplaying ? 'var(--caution)' : status === 'live' ? 'var(--positive)' : status === 'connecting' ? 'var(--caution)' : 'var(--text-3)'
+  const statusLabel = status === 'live' ? 'Live' : status === 'connecting' ? 'Connecting' : 'Offline'
+  const statusColor = status === 'live' ? 'var(--positive)' : status === 'connecting' ? 'var(--caution)' : 'var(--text-3)'
 
   const FILTERS = [
     { key: 'all', label: 'All' },
@@ -437,7 +342,7 @@ export default function Dashboard() {
                   height: 6,
                   borderRadius: '50%',
                   background: statusColor,
-                  animation: status === 'live' && !isReplaying ? 'pulse-dot 2s ease-in-out infinite' : 'none',
+                  animation: status === 'live' ? 'pulse-dot 2s ease-in-out infinite' : 'none',
                 }}
               />
               <span
@@ -470,54 +375,13 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Summary line + controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          {/* Summary */}
+        {/* Summary */}
+        <div style={{ marginBottom: 20 }}>
           <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>
             {counts.total} brief{counts.total !== 1 ? 's' : ''}
             {counts.consensus > 0 && <> · <span style={{ color: 'var(--positive)' }}>{counts.consensus}</span> consensus</>}
             {counts.contested > 0 && <> · <span style={{ color: 'var(--caution)' }}>{counts.contested}</span> contested</>}
           </p>
-
-          {/* Replay */}
-          <button
-            onClick={() => (isReplaying ? stopReplay() : setShowReplayModal(true))}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '5px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: isReplaying ? 'var(--negative)' : 'var(--text-2)',
-              fontSize: 12,
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'border-color 0.12s, color 0.12s',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
-              if (!isReplaying) e.currentTarget.style.color = 'var(--text)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
-              if (!isReplaying) e.currentTarget.style.color = 'var(--text-2)'
-            }}
-          >
-            {isReplaying ? (
-              <>
-                <span style={{ width: 7, height: 7, borderRadius: 1, background: 'var(--negative)' }} />
-                Stop
-              </>
-            ) : (
-              <>
-                <span style={{ fontSize: 9 }}>▶</span>
-                Replay
-              </>
-            )}
-          </button>
         </div>
 
         {/* Filters */}
@@ -556,6 +420,66 @@ export default function Dashboard() {
         </div>
 
         <div style={{ height: 1, background: 'var(--border)', marginBottom: 20 }} />
+
+        {/* Backend logs */}
+        <section
+          style={{
+            marginBottom: 24,
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            background: 'var(--surface)',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '10px 12px',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-2)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Backend Logs
+            </span>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>
+              {agentLogs.length} recent
+            </span>
+          </div>
+
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {agentLogs.length === 0 ? (
+              <p style={{ margin: 0, padding: '12px', fontSize: 12, color: 'var(--text-3)' }}>
+                Waiting for live backend pipeline activity...
+              </p>
+            ) : (
+              agentLogs.map((log, i) => (
+                <div
+                  key={`${log.timestamp}-${log.eventType}-${i}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '90px 120px 1fr',
+                    gap: 10,
+                    padding: '8px 12px',
+                    borderBottom: i === agentLogs.length - 1 ? 'none' : '1px solid var(--border)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                  }}
+                >
+                  <span style={{ color: 'var(--text-3)' }}>
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span style={{ color: 'var(--text-2)', textTransform: 'uppercase' }}>{log.eventType}</span>
+                  <span style={{ color: 'var(--text)' }}>
+                    {log.tokenAddress ? `${log.tokenAddress.slice(0, 6)}…${log.tokenAddress.slice(-4)} · ` : ''}
+                    {log.message}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
 
         {/* Brief list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -607,9 +531,6 @@ export default function Dashboard() {
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {selectedBrief && (
         <BriefModal brief={selectedBrief} onClose={() => setSelectedBrief(null)} />
-      )}
-      {showReplayModal && (
-        <ReplayModal onStart={startReplay} onClose={() => setShowReplayModal(false)} />
       )}
     </div>
   )

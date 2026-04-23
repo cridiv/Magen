@@ -55,13 +55,23 @@ type IngestResponse = {
   results?: unknown[];
 };
 
+type PollerLogPayload = {
+  eventType: string;
+  message: string;
+  tokenAddress?: string;
+  metadata?: Record<string, unknown>;
+};
+
 const NESTJS_INGEST_URL =
   process.env.NESTJS_INGEST_URL ?? 'http://localhost:5000/tokens/ingest';
+const NESTJS_LOG_URL =
+  process.env.NESTJS_LOG_URL ?? 'http://localhost:5000/briefs/logs';
 const NESTJS_INGEST_TIMEOUT_MS = Number(
   process.env.NESTJS_INGEST_TIMEOUT_MS ?? 90000,
 );
 const NESTJS_INGEST_RETRIES = Number(process.env.NESTJS_INGEST_RETRIES ?? 2);
 const NESTJS_BATCH_DELAY_MS = Number(process.env.NESTJS_BATCH_DELAY_MS ?? 800);
+const EMIT_POLLER_LOGS = process.env.EMIT_POLLER_LOGS === 'true';
 const BATCH_SIZE = 6;
 let pollInFlight = false;
 
@@ -113,7 +123,34 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function sendIngestBatch(payload: { tokens: IngestTokenItem[] }): Promise<IngestResponse> {
+async function sendPollerLog(payload: PollerLogPayload): Promise<void> {
+  if (!EMIT_POLLER_LOGS) {
+    return;
+  }
+
+  try {
+    await axios.post(
+      NESTJS_LOG_URL,
+      {
+        tokenAddress: payload.tokenAddress ?? null,
+        eventType: payload.eventType,
+        message: payload.message,
+        metadata: payload.metadata,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 4000,
+      },
+    );
+  } catch {
+    // Never fail polling because log forwarding is unavailable.
+  }
+}
+
+async function sendIngestBatch(payload: {
+  tokens: IngestTokenItem[];
+}): Promise<IngestResponse> {
   for (let attempt = 1; attempt <= NESTJS_INGEST_RETRIES; attempt++) {
     try {
       const response = await axios.post<IngestResponse>(
@@ -196,23 +233,42 @@ async function fetchFourmemeOutput(): Promise<string | null> {
 async function pollAndIngest(): Promise<void> {
   if (pollInFlight) {
     console.warn('⚠️ Previous poll still running — skipping');
+    await sendPollerLog({
+      eventType: 'poll_skipped',
+      message: 'Previous poll still running',
+    });
     return;
   }
 
   pollInFlight = true;
 
   try {
-    console.log(`\n[${new Date().toISOString()}] 🔄 Polling Four.meme...`);
+    const cycleStart = new Date().toISOString();
+    console.log(`\n[${cycleStart}] 🔄 Polling Four.meme...`);
+    await sendPollerLog({
+      eventType: 'poll_started',
+      message: 'Polling Four.meme',
+      metadata: { cycleStart },
+    });
 
     const output = await fetchFourmemeOutput();
 
     if (!output) {
       console.error('❌ Four.meme unavailable. Skipping this poll cycle...');
+      await sendPollerLog({
+        eventType: 'poll_failed',
+        message: 'Four.meme unavailable. Poll cycle skipped',
+      });
       return;
     }
 
     const rawTokens = normalizeTokens(JSON.parse(output) as FourmemeResponse);
     console.log(`Found ${rawTokens.length} raw tokens.`);
+    await sendPollerLog({
+      eventType: 'poll_tokens_found',
+      message: `Found ${rawTokens.length} raw tokens`,
+      metadata: { rawCount: rawTokens.length },
+    });
 
     const lightBatch: IngestTokenItem[] = [];
 
@@ -275,26 +331,68 @@ async function pollAndIngest(): Promise<void> {
     for (let index = 0; index < lightBatch.length; index += BATCH_SIZE) {
       const batch = lightBatch.slice(index, index + BATCH_SIZE);
       const payload = { tokens: batch };
+      const batchNumber = Math.floor(index / BATCH_SIZE) + 1;
 
       console.log(
-        `Sending light batch ${Math.floor(index / BATCH_SIZE) + 1} (${batch.length} tokens)...`,
+        `Sending light batch ${batchNumber} (${batch.length} tokens)...`,
       );
+      await sendPollerLog({
+        eventType: 'poll_batch_sent',
+        message: `Sending light batch ${batchNumber} (${batch.length} tokens)`,
+        metadata: { batchNumber, batchSize: batch.length },
+      });
 
       try {
         const response = await sendIngestBatch(payload);
 
         console.log('✅ Light batch successful');
         console.log(`   Processed: ${response.processed ?? batch.length}`);
+        await sendPollerLog({
+          eventType: 'poll_batch_success',
+          message: `Light batch ${batchNumber} successful`,
+          metadata: {
+            batchNumber,
+            batchSize: batch.length,
+            processed: response.processed ?? batch.length,
+          },
+        });
       } catch (error: unknown) {
         if (axios.isAxiosError(error)) {
           console.error(
             '❌ Light batch failed:',
             error.response?.data ?? error.message,
           );
+          await sendPollerLog({
+            eventType: 'poll_batch_failed',
+            message: `Light batch ${batchNumber} failed`,
+            metadata: {
+              batchNumber,
+              batchSize: batch.length,
+              reason: String(error.response?.data ?? error.message),
+            },
+          });
         } else if (error instanceof Error) {
           console.error('❌ Light batch failed:', error.message);
+          await sendPollerLog({
+            eventType: 'poll_batch_failed',
+            message: `Light batch ${batchNumber} failed`,
+            metadata: {
+              batchNumber,
+              batchSize: batch.length,
+              reason: error.message,
+            },
+          });
         } else {
           console.error('❌ Light batch failed:', String(error));
+          await sendPollerLog({
+            eventType: 'poll_batch_failed',
+            message: `Light batch ${batchNumber} failed`,
+            metadata: {
+              batchNumber,
+              batchSize: batch.length,
+              reason: String(error),
+            },
+          });
         }
       }
 
@@ -305,10 +403,22 @@ async function pollAndIngest(): Promise<void> {
   } catch (error: unknown) {
     if (error instanceof Error) {
       console.error('Polling cycle failed:', error.message);
+      await sendPollerLog({
+        eventType: 'poll_failed',
+        message: `Polling cycle failed: ${error.message}`,
+      });
     } else {
       console.error('Polling cycle failed:', String(error));
+      await sendPollerLog({
+        eventType: 'poll_failed',
+        message: `Polling cycle failed: ${String(error)}`,
+      });
     }
   } finally {
+    await sendPollerLog({
+      eventType: 'poll_finished',
+      message: 'Polling cycle finished',
+    });
     pollInFlight = false;
   }
 }

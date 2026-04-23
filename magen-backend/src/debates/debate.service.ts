@@ -276,6 +276,13 @@ export class DebateService {
     event: string,
     detail: string,
   ): Promise<void> {
+    this.briefsGateway.emitAgentLog({
+      tokenAddress,
+      eventType: event,
+      message: detail,
+      timestamp: new Date().toISOString(),
+    })
+
     await this.prisma.pipelineLog.create({
       data: {
         tokenAddress,

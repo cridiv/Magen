@@ -1,29 +1,37 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { MemeBrief, ConnectionStatus, PipelineError } from '../lib/types'
+import { MemeBrief, ConnectionStatus, PipelineError, AgentLog } from '../lib/types'
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'http://localhost:5000'
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL?.trim() || 'http://localhost:5000'
 
-export function useSocket(onBrief: (brief: MemeBrief) => void) {
+type SocketClient = {
+  disconnect: () => void
+  on: (event: string, listener: (...args: unknown[]) => void) => void
+}
+
+type UseSocketOptions = {
+  onBrief: (brief: MemeBrief) => void
+  onAgentLog?: (log: AgentLog) => void
+}
+
+export function useSocket({ onBrief, onAgentLog }: UseSocketOptions) {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [errors, setErrors] = useState<PipelineError[]>([])
-  const socketRef = useRef<any>(null)
+  const socketRef = useRef<SocketClient | null>(null)
 
   useEffect(() => {
-    let io: any
-    let socket: any
+    let socket: SocketClient | undefined
 
     const connect = async () => {
       try {
         const { io: socketIo } = await import('socket.io-client')
-        io = socketIo
 
         socket = socketIo(WS_URL, {
           transports: ['websocket', 'polling'],
           reconnectionAttempts: 10,
           reconnectionDelay: 2000,
-        })
+        }) as SocketClient
 
         socketRef.current = socket
 
@@ -43,6 +51,14 @@ export function useSocket(onBrief: (brief: MemeBrief) => void) {
           onBrief(brief)
         })
 
+        socket.on('backend:log', (log: AgentLog) => {
+          onAgentLog?.(log)
+        })
+
+        socket.on('agent:log', (log: AgentLog) => {
+          onAgentLog?.(log)
+        })
+
         socket.on('pipeline:error', (err: PipelineError) => {
           setErrors(prev => [err, ...prev].slice(0, 10))
         })
@@ -56,7 +72,7 @@ export function useSocket(onBrief: (brief: MemeBrief) => void) {
     return () => {
       socket?.disconnect()
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onAgentLog, onBrief])
 
   const disconnect = useCallback(() => {
     socketRef.current?.disconnect()
